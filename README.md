@@ -95,12 +95,38 @@ local ai/
 
 ## Docker
 
+### ขั้นตอน
+
 ```bash
+# 1. สร้าง .env จาก template แล้วกรอก LINE credentials
+cp .env.example .env
+
+# 2. รัน Ollama + linebot พร้อมกัน
 docker-compose up -d
 
-# Pull models หลัง Ollama รันแล้ว
+# 3. รอ Ollama พร้อม (~30s) แล้ว pull models
 docker exec ollama ollama pull llama3.2
 docker exec ollama ollama pull nomic-embed-text
+
+# 4. เปิด Admin Panel
+open http://localhost:8000/admin
+```
+
+### หมายเหตุ
+
+- `linebot` จะรอให้ Ollama healthy ก่อนจึงจะ start (healthcheck อัตโนมัติ)
+- `data/` mount เป็น writable — อัปโหลดเอกสารผ่าน Admin Panel ได้เลย
+- `logs/` mount ไว้ที่ host — ดู log ได้จากเครื่องตรงๆ
+
+```bash
+# ดู logs
+docker-compose logs -f linebot
+
+# หยุด
+docker-compose down
+
+# Rebuild หลังแก้โค้ด
+docker-compose up -d --build
 ```
 
 ---

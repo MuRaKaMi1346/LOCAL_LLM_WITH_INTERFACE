@@ -1,6 +1,7 @@
 version: "3.9"
 
 services:
+
   ollama:
     image: ollama/ollama:latest
     container_name: ollama
@@ -9,7 +10,13 @@ services:
       - "11434:11434"
     volumes:
       - ollama_data:/root/.ollama
-    # ถ้ามี GPU ให้ uncomment บรรทัดด้านล่าง
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:11434/api/tags || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    # Uncomment for GPU support:
     # deploy:
     #   resources:
     #     reservations:
@@ -20,7 +27,7 @@ services:
 
   linebot:
     build: .
-    container_name: faculty-linebot
+    container_name: linebot
     restart: unless-stopped
     ports:
       - "8000:8000"
@@ -29,9 +36,11 @@ services:
     environment:
       - OLLAMA_BASE_URL=http://ollama:11434
     depends_on:
-      - ollama
+      ollama:
+        condition: service_healthy
     volumes:
-      - ./data:/app/data:ro
+      - ./data:/app/data        # knowledge base (writable for admin uploads)
+      - ./logs:/app/logs        # persist server logs
 
 volumes:
   ollama_data:

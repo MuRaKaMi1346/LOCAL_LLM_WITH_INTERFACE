@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+logs/
+chroma_db/
+.git/
+.gitignore
+.claude/
+LineBot.app/
+launcher.py
+start.bat
+scripts/
