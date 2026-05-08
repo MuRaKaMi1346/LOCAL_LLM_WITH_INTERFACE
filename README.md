@@ -8,7 +8,7 @@
 ## โครงสร้างโปรเจกต์
 
 ```
-local ai minnie/
+local ai/
 │
 ├── main.py               ← FastAPI entry point
 ├── config.py             ← การตั้งค่า (pydantic-settings)
