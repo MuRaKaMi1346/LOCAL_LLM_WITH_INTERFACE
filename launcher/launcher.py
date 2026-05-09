@@ -800,5 +800,15 @@ class App(tk.Tk):
 
 
 if __name__ == "__main__":
-    app = App()
-    app.mainloop()
+    import traceback
+    try:
+        app = App()
+        app.mainloop()
+    except Exception:
+        err = traceback.format_exc()
+        try:
+            import tkinter.messagebox as _mb
+            _root = tk.Tk(); _root.withdraw()
+            _mb.showerror("LINE Bot — Error", err)
+        except Exception:
+            print(err)
