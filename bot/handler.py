@@ -63,6 +63,9 @@ async def handle_text_message(event: MessageEvent) -> None:
     reply_token: str = event.reply_token
     user_text: str = event.message.text.strip()
 
+    if not reply_token:
+        return
+
     if not app_state.bot_enabled:
         await _reply(reply_token, "🔧 ขณะนี้บอทปิดให้บริการชั่วคราว\nกรุณาลองใหม่อีกครั้งในภายหลังครับ")
         return
@@ -114,6 +117,8 @@ async def handle_text_message(event: MessageEvent) -> None:
 
 
 async def handle_follow(event: FollowEvent) -> None:
+    if not event.reply_token:
+        return
     await _reply(event.reply_token, get_welcome_message(), quick_reply=_quick_reply_menu())
 
 
