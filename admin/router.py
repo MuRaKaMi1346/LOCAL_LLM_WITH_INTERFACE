@@ -120,27 +120,63 @@ def _read_env_raw() -> dict[str, str]:
 
 @router.get("/api/credentials")
 async def get_credentials():
-    raw = _read_env_raw()
-    return {k: _mask(raw.get(k, "")) for k in _CRED_KEYS}
+    cfg: dict = {}
+    if CONFIG_JSON.exists():
+        try:
+            cfg = json.loads(CONFIG_JSON.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    return {
+        "LINE_CHANNEL_ACCESS_TOKEN": _mask(cfg.get("line_channel_access_token", "")),
+        "LINE_CHANNEL_SECRET":       _mask(cfg.get("line_channel_secret", "")),
+        "NGROK_AUTH_TOKEN":          _mask(_read_env_raw().get("NGROK_AUTH_TOKEN", "")),
+    }
 
 
 @router.post("/api/credentials")
 async def save_credentials(data: dict):
-    if not ENV_FILE.exists():
-        raise HTTPException(404, ".env ไม่พบ")
-    text = ENV_FILE.read_text(encoding="utf-8")
     changed = []
-    for key in _CRED_KEYS:
-        val = data.get(key, "").strip()
+
+    # LINE token & secret → config.json
+    cfg: dict = {}
+    if CONFIG_JSON.exists():
+        try:
+            cfg = json.loads(CONFIG_JSON.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    for env_key, cfg_key in (
+        ("LINE_CHANNEL_ACCESS_TOKEN", "line_channel_access_token"),
+        ("LINE_CHANNEL_SECRET",       "line_channel_secret"),
+    ):
+        val = data.get(env_key, "").strip()
         if not val or "••••••••" in val:
             continue
-        pattern = rf"^{key}=.*$"
-        if re.search(pattern, text, re.MULTILINE):
-            text = re.sub(pattern, f"{key}={val}", text, flags=re.MULTILINE)
+        cfg[cfg_key] = val
+        object.__setattr__(settings, cfg_key, val)
+        changed.append(env_key)
+    if changed:
+        CONFIG_JSON.write_text(
+            json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8"
+        )
+
+    # NGROK → .env (not a Settings field)
+    ngrok_val = data.get("NGROK_AUTH_TOKEN", "").strip()
+    if ngrok_val and "••••••••" not in ngrok_val:
+        if not ENV_FILE.exists():
+            ENV_FILE.write_text(f"NGROK_AUTH_TOKEN={ngrok_val}\n", encoding="utf-8")
         else:
-            text += f"\n{key}={val}"
-        changed.append(key)
-    ENV_FILE.write_text(text, encoding="utf-8")
+            text = ENV_FILE.read_text(encoding="utf-8")
+            pattern = r"^NGROK_AUTH_TOKEN=.*$"
+            if re.search(pattern, text, re.MULTILINE):
+                text = re.sub(pattern, f"NGROK_AUTH_TOKEN={ngrok_val}", text, flags=re.MULTILINE)
+            else:
+                text += f"\nNGROK_AUTH_TOKEN={ngrok_val}"
+            ENV_FILE.write_text(text, encoding="utf-8")
+        changed.append("NGROK_AUTH_TOKEN")
+
+    if "line_channel_secret" in [c.lower().replace("line_channel_", "") for c in changed]:
+        app_state.reload_parser(settings.line_channel_secret)
+
     return {"ok": True, "changed": changed}
 
 
@@ -215,39 +251,18 @@ async def hot_reload():
     """Apply latest secrets (.env) and runtime config (config.json) without restart."""
     changed = []
 
-    # LINE secrets from .env only
-    if ENV_FILE.exists():
-        env_vals: dict[str, str] = {}
-        for line in ENV_FILE.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            k, _, v = line.partition("=")
-            env_vals[k.strip()] = v.strip()
-        for env_key, (attr, typ) in {
-            "LINE_CHANNEL_ACCESS_TOKEN": ("line_channel_access_token", str),
-            "LINE_CHANNEL_SECRET":       ("line_channel_secret", str),
-        }.items():
-            if env_key in env_vals:
-                try:
-                    new_val = typ(env_vals[env_key])
-                    if getattr(settings, attr) != new_val:
-                        object.__setattr__(settings, attr, new_val)
-                        changed.append(attr)
-                except Exception:
-                    pass
-
-    # Runtime config from config.json
+    # All settings from config.json (includes LINE secrets + runtime config)
     if CONFIG_JSON.exists():
         try:
             data = json.loads(CONFIG_JSON.read_text(encoding="utf-8"))
-            runtime_types = {
+            all_types = {
+                "line_channel_access_token": str, "line_channel_secret": str,
                 "faculty_name": str, "university_name": str,
                 "ollama_base_url": str, "ollama_chat_model": str, "ollama_embed_model": str,
                 "rag_top_k": int, "chunk_size": int, "chunk_overlap": int,
                 "max_history_turns": int,
             }
-            for key, typ in runtime_types.items():
+            for key, typ in all_types.items():
                 if key in data:
                     try:
                         new_val = typ(data[key])

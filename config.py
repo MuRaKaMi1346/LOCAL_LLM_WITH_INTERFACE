@@ -7,6 +7,7 @@ from pydantic import Field
 _CONFIG_JSON = Path("config.json")
 
 _RUNTIME_KEYS = frozenset({
+    "line_channel_access_token", "line_channel_secret",
     "ollama_base_url", "ollama_chat_model", "ollama_embed_model",
     "faculty_name", "university_name",
     "rag_top_k", "chunk_size", "chunk_overlap", "max_history_turns",
@@ -14,8 +15,8 @@ _RUNTIME_KEYS = frozenset({
 
 
 class Settings(BaseSettings):
-    line_channel_access_token: str = Field(..., env="LINE_CHANNEL_ACCESS_TOKEN")
-    line_channel_secret: str = Field(..., env="LINE_CHANNEL_SECRET")
+    line_channel_access_token: str = Field("", env="LINE_CHANNEL_ACCESS_TOKEN")
+    line_channel_secret: str = Field("", env="LINE_CHANNEL_SECRET")
 
     ollama_base_url: str = Field("http://localhost:11434", env="OLLAMA_BASE_URL")
     ollama_chat_model: str = Field("llama3.2", env="OLLAMA_CHAT_MODEL")
