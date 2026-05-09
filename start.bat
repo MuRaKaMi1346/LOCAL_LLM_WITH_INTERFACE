@@ -95,7 +95,36 @@ if errorlevel 1 (
 echo  [OK] Ollama ready
 
 :: ══════════════════════════════════════════════════════════════════════════════
-:: 3. Virtual environment
+:: 3. ngrok (optional — for public webhook URL)
+:: ══════════════════════════════════════════════════════════════════════════════
+ngrok --version >nul 2>&1
+if not errorlevel 1 goto :ngrok_ok
+
+echo  [INFO] ngrok not found -- installing...
+if "%HAS_WINGET%"=="1" (
+    winget install -e --id Ngrok.Ngrok ^
+        --accept-source-agreements --accept-package-agreements
+) else (
+    echo  [INFO] Downloading ngrok...
+    powershell -NoProfile -Command ^
+        "Invoke-WebRequest 'https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-windows-amd64.zip' ^
+         -OutFile '%TEMP%\ngrok.zip' -UseBasicParsing; ^
+         Expand-Archive '%TEMP%\ngrok.zip' -DestinationPath '%LOCALAPPDATA%\ngrok' -Force"
+    del /q %TEMP%\ngrok.zip 2>nul
+    set "PATH=%LOCALAPPDATA%\ngrok;%PATH%"
+)
+if exist "%LOCALAPPDATA%\ngrok\ngrok.exe" set "PATH=%LOCALAPPDATA%\ngrok;%PATH%"
+
+:ngrok_ok
+ngrok --version >nul 2>&1
+if not errorlevel 1 (
+    echo  [OK] ngrok ready
+) else (
+    echo  [OK] ngrok skipped ^(optional — bot works without it^)
+)
+
+:: ══════════════════════════════════════════════════════════════════════════════
+:: 4. Virtual environment
 :: ══════════════════════════════════════════════════════════════════════════════
 if not exist ".venv\Scripts\python.exe" (
     echo  Creating virtual environment...
@@ -107,7 +136,7 @@ if not exist ".venv\Scripts\python.exe" (
 )
 
 :: ══════════════════════════════════════════════════════════════════════════════
-:: 4. Dependencies
+:: 5. Dependencies
 :: ══════════════════════════════════════════════════════════════════════════════
 echo  Checking dependencies (first run may take a minute)...
 .venv\Scripts\pip install -r requirements.txt -q
@@ -115,7 +144,7 @@ if errorlevel 1 goto :fail
 echo  [OK] All dependencies installed.
 
 :: ══════════════════════════════════════════════════════════════════════════════
-:: 5. Launch GUI
+:: 6. Launch GUI
 :: ══════════════════════════════════════════════════════════════════════════════
 echo  Launching LINE Bot...
 echo.

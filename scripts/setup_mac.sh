@@ -116,7 +116,23 @@ else
 fi
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 5. Virtual environment
+# 5. ngrok (optional — for public webhook URL)
+# ══════════════════════════════════════════════════════════════════════════════
+info "Checking ngrok..."
+if command -v ngrok &>/dev/null; then
+    success "ngrok already installed ($(ngrok --version 2>/dev/null | head -1))"
+else
+    info "ngrok not found — installing via Homebrew..."
+    brew install --cask ngrok 2>/dev/null \
+        || brew install ngrok/ngrok/ngrok 2>/dev/null \
+        || { warn "ngrok install failed — skipped (bot works without it)"; true; }
+    command -v ngrok &>/dev/null \
+        && success "ngrok installed" \
+        || warn "ngrok skipped (optional — bot works without it)"
+fi
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 6. Virtual environment
 # ══════════════════════════════════════════════════════════════════════════════
 if [ -d "$VENV_DIR" ]; then
     info "Virtual environment already exists — skipping creation"
@@ -130,7 +146,7 @@ VENV_PY="$VENV_DIR/bin/python"
 VENV_PIP="$VENV_DIR/bin/pip"
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 6. Dependencies
+# 7. Dependencies
 # ══════════════════════════════════════════════════════════════════════════════
 info "Upgrading pip..."
 "$VENV_PY" -m pip install --upgrade pip --quiet
@@ -141,7 +157,7 @@ info "Installing Python dependencies (this may take a minute)..."
 success "All dependencies installed"
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 7. LineBot.app permissions
+# 8. LineBot.app permissions
 # ══════════════════════════════════════════════════════════════════════════════
 if [ -f "$APP_EXEC" ]; then
     chmod +x "$APP_EXEC"
@@ -152,13 +168,13 @@ else
 fi
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 8. Create directories
+# 9. Create directories
 # ══════════════════════════════════════════════════════════════════════════════
 mkdir -p "$PROJECT_DIR/data" "$PROJECT_DIR/logs"
 success "data/ and logs/ directories ready"
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 9. Copy to /Applications (optional)
+# 10. Copy to /Applications (optional)
 # ══════════════════════════════════════════════════════════════════════════════
 if [ -d "$APP_BUNDLE" ]; then
     echo ""
