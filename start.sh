@@ -13,26 +13,34 @@ if [ ! -f "$VENV_PY" ]; then
     exit 0
 fi
 
-# macOS: tkinter requires a framework Python build.
-# Find one and inject venv packages via PYTHONPATH.
+# macOS: tkinter needs the real Python.app framework executable.
+# Ask the venv Python itself where its framework lives.
 if [[ "$(uname)" == "Darwin" ]]; then
-    VENV_SITE="$("$VENV_PY" -c 'import site; print(site.getsitepackages()[0])' 2>/dev/null || true)"
-    FRAMEWORK_PY=""
-    for candidate in \
-        "/opt/homebrew/opt/python@3.13/Frameworks/Python.framework/Versions/3.13/bin/python3.13" \
-        "/opt/homebrew/opt/python@3.12/Frameworks/Python.framework/Versions/3.12/bin/python3.12" \
-        "/opt/homebrew/opt/python@3.11/Frameworks/Python.framework/Versions/3.11/bin/python3.11" \
-        "/usr/local/opt/python@3.12/Frameworks/Python.framework/Versions/3.12/bin/python3.12" \
-        "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3.12" \
-        "/Library/Frameworks/Python.framework/Versions/3.11/bin/python3.11" \
-    ; do
-        if [ -f "$candidate" ]; then
-            FRAMEWORK_PY="$candidate"
+    FRAMEWORK_PY=$("$VENV_PY" - <<'PYEOF' 2>/dev/null
+import sysconfig, os, sys
+prefix = sysconfig.get_config_var("PYTHONFRAMEWORKPREFIX") or ""
+candidate = os.path.join(prefix, "Resources/Python.app/Contents/MacOS/Python")
+if os.path.isfile(candidate):
+    print(candidate)
+else:
+    # fallback: try cellar glob
+    import glob
+    patterns = [
+        "/opt/homebrew/Cellar/python@3.*/*/Frameworks/Python.framework/Versions/*/Resources/Python.app/Contents/MacOS/Python",
+        "/usr/local/Cellar/python@3.*/*/Frameworks/Python.framework/Versions/*/Resources/Python.app/Contents/MacOS/Python",
+    ]
+    for p in patterns:
+        matches = sorted(glob.glob(p), reverse=True)
+        if matches:
+            print(matches[0])
             break
-        fi
-    done
+PYEOF
+    )
 
-    if [ -n "$FRAMEWORK_PY" ] && [ -n "$VENV_SITE" ]; then
+    VENV_SITE=$("$VENV_PY" -c "import site; print(site.getsitepackages()[0])" 2>/dev/null || true)
+
+    if [ -n "$FRAMEWORK_PY" ] && [ -f "$FRAMEWORK_PY" ] && [ -n "$VENV_SITE" ]; then
+        echo "  Using framework Python: $FRAMEWORK_PY"
         exec env PYTHONPATH="$VENV_SITE" "$FRAMEWORK_PY" launcher/launcher.py
     fi
 fi

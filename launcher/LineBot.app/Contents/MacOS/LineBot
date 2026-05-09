@@ -1,12 +1,11 @@
 #!/usr/bin/env bash
-# LineBot.app launcher — finds framework Python for tkinter on macOS
+# LineBot.app launcher — uses framework Python for tkinter on macOS
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
-VENV_DIR="$PROJECT_ROOT/.venv"
-VENV_PY="$VENV_DIR/bin/python"
+VENV_PY="$PROJECT_ROOT/.venv/bin/python"
 
 cd "$PROJECT_ROOT"
 
@@ -26,24 +25,29 @@ EOF
     exit 0
 fi
 
-# macOS: tkinter requires a framework Python build.
-VENV_SITE="$("$VENV_PY" -c 'import site; print(site.getsitepackages()[0])' 2>/dev/null || true)"
-FRAMEWORK_PY=""
-for candidate in \
-    "/opt/homebrew/opt/python@3.13/Frameworks/Python.framework/Versions/3.13/bin/python3.13" \
-    "/opt/homebrew/opt/python@3.12/Frameworks/Python.framework/Versions/3.12/bin/python3.12" \
-    "/opt/homebrew/opt/python@3.11/Frameworks/Python.framework/Versions/3.11/bin/python3.11" \
-    "/usr/local/opt/python@3.12/Frameworks/Python.framework/Versions/3.12/bin/python3.12" \
-    "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3.12" \
-    "/Library/Frameworks/Python.framework/Versions/3.11/bin/python3.11" \
-; do
-    if [ -f "$candidate" ]; then
-        FRAMEWORK_PY="$candidate"
-        break
-    fi
-done
+# Ask the venv Python itself where its framework executable lives
+FRAMEWORK_PY=$("$VENV_PY" - <<'PYEOF' 2>/dev/null
+import sysconfig, os, glob
+prefix = sysconfig.get_config_var("PYTHONFRAMEWORKPREFIX") or ""
+candidate = os.path.join(prefix, "Resources/Python.app/Contents/MacOS/Python")
+if os.path.isfile(candidate):
+    print(candidate)
+else:
+    patterns = [
+        "/opt/homebrew/Cellar/python@3.*/*/Frameworks/Python.framework/Versions/*/Resources/Python.app/Contents/MacOS/Python",
+        "/usr/local/Cellar/python@3.*/*/Frameworks/Python.framework/Versions/*/Resources/Python.app/Contents/MacOS/Python",
+    ]
+    for p in patterns:
+        matches = sorted(glob.glob(p), reverse=True)
+        if matches:
+            print(matches[0])
+            break
+PYEOF
+)
 
-if [ -n "$FRAMEWORK_PY" ] && [ -n "$VENV_SITE" ]; then
+VENV_SITE=$("$VENV_PY" -c "import site; print(site.getsitepackages()[0])" 2>/dev/null || true)
+
+if [ -n "$FRAMEWORK_PY" ] && [ -f "$FRAMEWORK_PY" ] && [ -n "$VENV_SITE" ]; then
     exec env PYTHONPATH="$VENV_SITE" "$FRAMEWORK_PY" "$PROJECT_ROOT/launcher/launcher.py"
 fi
 
