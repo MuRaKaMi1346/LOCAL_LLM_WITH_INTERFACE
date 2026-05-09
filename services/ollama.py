@@ -14,14 +14,16 @@ class OllamaService:
         self.client = httpx.AsyncClient(timeout=120.0)
 
     async def chat(self, messages: list[dict], system_prompt: str | None = None) -> str:
+        all_messages: list[dict] = []
+        if system_prompt:
+            all_messages.append({"role": "system", "content": system_prompt})
+        all_messages.extend(messages)
         payload = {
             "model": self.chat_model,
-            "messages": messages,
+            "messages": all_messages,
             "stream": False,
-            "options": {"temperature": 0.3, "top_p": 0.9, "num_ctx": 4096},
+            "options": {"temperature": 0.3, "top_p": 0.9, "num_ctx": 8192},
         }
-        if system_prompt:
-            payload["system"] = system_prompt
         try:
             r = await self.client.post(f"{self.base_url}/api/chat", json=payload)
             r.raise_for_status()

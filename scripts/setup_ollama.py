@@ -15,7 +15,7 @@ def run(cmd: list[str]) -> int:
 
 def main():
     print("=" * 60)
-    print("  Faculty LINE Bot — Setup")
+    print("  LINE Bot — Ollama Model Setup")
     print("=" * 60)
 
     # Check Ollama
