@@ -277,7 +277,7 @@ class WelcomePage(tk.Frame):
 
 
 class LineCredPage(tk.Frame):
-    def __init__(self, parent, wizard, env: dict):
+    def __init__(self, parent, wizard, cfg: dict):
         super().__init__(parent, bg=C["BG"])
         make_header(self, "LINE Credentials 🔑", "ขั้นตอน 1/3")
         body = tk.Frame(self, bg=C["BG"], padx=28, pady=16)
@@ -320,7 +320,7 @@ class LineCredPage(tk.Frame):
 
 
 class BotIdentityPage(tk.Frame):
-    def __init__(self, parent, wizard, env: dict):
+    def __init__(self, parent, wizard, cfg: dict):
         super().__init__(parent, bg=C["BG"])
         make_header(self, "ตัวตนของบอท 🤖", "ขั้นตอน 2/3")
         body = tk.Frame(self, bg=C["BG"], padx=28, pady=16)
@@ -361,7 +361,7 @@ class BotIdentityPage(tk.Frame):
 
 
 class OllamaPage(tk.Frame):
-    def __init__(self, parent, wizard, env: dict):
+    def __init__(self, parent, wizard, cfg: dict):
         super().__init__(parent, bg=C["BG"])
         make_header(self, "Ollama Settings 🦙", "ขั้นตอน 3/3")
         body = tk.Frame(self, bg=C["BG"], padx=28, pady=16)
