@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     faculty_name: str = Field("หน่วยงานของคุณ", env="FACULTY_NAME")
     university_name: str = Field("มหาวิทยาลัยตัวอย่าง", env="UNIVERSITY_NAME")
 
-    rag_top_k: int = Field(8, env="RAG_TOP_K")
+    rag_top_k: int = Field(10, env="RAG_TOP_K")
     chunk_size: int = Field(1200, env="CHUNK_SIZE")
     chunk_overlap: int = Field(150, env="CHUNK_OVERLAP")
 
