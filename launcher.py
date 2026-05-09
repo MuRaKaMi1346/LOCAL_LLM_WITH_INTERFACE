@@ -8,6 +8,7 @@ import os
 import re
 import sys
 import shutil
+import signal
 import subprocess
 import threading
 import webbrowser
@@ -41,6 +42,30 @@ C = dict(
     TEXT="#1A1A2E", MUTED="#888899", BORDER="#F0D0EC",
     WHITE="#FFFFFF",
 )
+
+
+# ── Process killer (full tree) ────────────────────────────────────────────────
+
+def _kill_proc(proc: subprocess.Popen | None) -> None:
+    if proc is None:
+        return
+    try:
+        if sys.platform == "win32":
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                capture_output=True, timeout=5,
+            )
+        else:
+            try:
+                pgid = os.getpgid(proc.pid)
+                os.killpg(pgid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+    except Exception:
+        try:
+            proc.terminate()
+        except Exception:
+            pass
 
 
 # ── .env helpers ──────────────────────────────────────────────────────────────
@@ -574,6 +599,7 @@ class ControlPanel(tk.Frame):
             text=True,
             env=env,
             bufsize=1,
+            start_new_session=True,
         )
         self._running = True
 
@@ -585,10 +611,8 @@ class ControlPanel(tk.Frame):
             threading.Thread(target=self._start_ngrok, daemon=True).start()
 
     def stop(self):
-        if self._proc:
-            self._proc.terminate()
-        if self._ngrok_proc:
-            self._ngrok_proc.terminate()
+        _kill_proc(self._proc)
+        _kill_proc(self._ngrok_proc)
         self._running = False
         self._proc = None
         self._ngrok_proc = None
@@ -768,8 +792,9 @@ class App(tk.Tk):
         self._panel = ControlPanel(self)
 
     def _on_quit(self):
-        if self._panel and self._panel._proc:
-            self._panel._proc.terminate()
+        if self._panel:
+            _kill_proc(self._panel._proc)
+            _kill_proc(self._panel._ngrok_proc)
         self.destroy()
 
 
