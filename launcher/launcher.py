@@ -731,11 +731,14 @@ class ControlPanel(tk.Frame):
         if not token:
             return
         try:
-            import httpx
+            import httpx, json as _json
             r = httpx.put(
                 "https://api.line.me/v2/bot/channel/webhook/endpoint",
-                headers={"Authorization": f"Bearer {token}"},
-                json={"webhookEndpointUrl": webhook_url},
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                },
+                content=_json.dumps({"webhookEndpointUrl": webhook_url}),
                 timeout=10,
             )
             if r.status_code == 200:
