@@ -172,6 +172,19 @@ async def get_config():
     }
 
 
+@router.get("/api/config/defaults")
+async def get_config_defaults():
+    from pydantic_core import PydanticUndefined
+    result = {}
+    skip = {"line_channel_access_token", "line_channel_secret"}
+    for name, field in type(settings).model_fields.items():
+        if name in skip:
+            continue
+        if field.default is not PydanticUndefined:
+            result[name] = field.default
+    return result
+
+
 @router.post("/api/config")
 async def update_config(data: ConfigPayload):
     if not ENV_FILE.exists():

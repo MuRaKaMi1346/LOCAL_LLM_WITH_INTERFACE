@@ -804,28 +804,32 @@ textarea.form-input{resize:vertical;min-height:260px;
 
   <!-- RAG settings -->
   <div class="card acc-purple">
-    <div class="card-title">🔍 RAG &amp; การสนทนา</div>
+    <div class="card-title" style="display:flex;align-items:center;gap:10px;">
+      🔍 RAG &amp; การสนทนา
+      <button class="btn btn-ghost" style="margin-left:auto;font-size:11px;padding:4px 10px;"
+              onclick="applyDefaults()" title="ใส่ค่าที่แนะนำจาก config.py">✨ ค่าที่แนะนำ</button>
+    </div>
     <p class="section-desc">RAG (Retrieval-Augmented Generation) คือระบบที่ช่วยให้บอทค้นหาข้อมูลจากเอกสารที่คุณอัพโหลดก่อนตอบ ทำให้ตอบแม่นยำขึ้น</p>
     <div class="form-grid">
       <div class="form-group">
         <label class="form-label">Top-K <span class="fbadge fbadge-instant">⚡ ทันที</span></label>
         <input class="form-input" type="number" id="cfg-topk" min="1" max="20">
-        <div class="field-desc">จำนวนข้อความอ้างอิงสูงสุดต่อคำถาม (แนะนำ 3–8)</div>
+        <div class="field-desc">จำนวน chunk อ้างอิงสูงสุดต่อคำถาม — ค่าที่แนะนำ: <strong id="hint-topk">10</strong></div>
       </div>
       <div class="form-group">
         <label class="form-label">Chunk Size <span class="fbadge fbadge-rebuild">🔄 Rebuild RAG</span></label>
         <input class="form-input" type="number" id="cfg-chunk" min="100" max="4000">
-        <div class="field-desc">ความยาวของแต่ละส่วนเอกสาร (ตัวอักษร) · แนะนำ 600–1000</div>
+        <div class="field-desc">ความยาวของแต่ละส่วนเอกสาร (ตัวอักษร) — ค่าที่แนะนำ: <strong id="hint-chunk">1200</strong></div>
       </div>
       <div class="form-group">
         <label class="form-label">Chunk Overlap <span class="fbadge fbadge-rebuild">🔄 Rebuild RAG</span></label>
         <input class="form-input" type="number" id="cfg-overlap" min="0" max="500">
-        <div class="field-desc">ส่วนทับซ้อนระหว่าง chunk ช่วยให้ไม่ขาดตอน (แนะนำ 80–150)</div>
+        <div class="field-desc">ส่วนทับซ้อนระหว่าง chunk ช่วยให้ไม่ขาดตอน — ค่าที่แนะนำ: <strong id="hint-overlap">150</strong></div>
       </div>
       <div class="form-group">
         <label class="form-label">Max History <span class="fbadge fbadge-instant">⚡ ทันที</span></label>
         <input class="form-input" type="number" id="cfg-history" min="1" max="20">
-        <div class="field-desc">จำนวนรอบสนทนาที่บอทจำได้ต่อผู้ใช้ (แนะนำ 6–10)</div>
+        <div class="field-desc">จำนวนรอบสนทนาที่บอทจำได้ต่อผู้ใช้ — ค่าที่แนะนำ: <strong id="hint-history">8</strong></div>
       </div>
     </div>
   </div>
@@ -1197,6 +1201,31 @@ async function quickToggleBot() {
 }
 
 // ─── Config ──────────────────────────────────────────────────────────────────
+async function applyDefaults() {
+  try {
+    const d = await api('GET', '/config/defaults');
+    const map = {
+      'cfg-topk':    'rag_top_k',
+      'cfg-chunk':   'chunk_size',
+      'cfg-overlap': 'chunk_overlap',
+      'cfg-history': 'max_history_turns',
+    };
+    const hints = {
+      'hint-topk':    'rag_top_k',
+      'hint-chunk':   'chunk_size',
+      'hint-overlap': 'chunk_overlap',
+      'hint-history': 'max_history_turns',
+    };
+    Object.entries(map).forEach(([id, key]) => {
+      if (d[key] !== undefined) document.getElementById(id).value = d[key];
+    });
+    Object.entries(hints).forEach(([id, key]) => {
+      if (d[key] !== undefined) document.getElementById(id).textContent = d[key];
+    });
+    showToast('✨ ใส่ค่าที่แนะนำแล้ว — กด "บันทึก & Apply" เพื่อบันทึก');
+  } catch(e) { showToast('โหลดค่าที่แนะนำไม่สำเร็จ: ' + e.message, true); }
+}
+
 async function loadConfig() {
   try {
     const c = await api('GET', '/config');
@@ -1209,6 +1238,12 @@ async function loadConfig() {
     document.getElementById('cfg-chunk').value     = c.chunk_size;
     document.getElementById('cfg-overlap').value   = c.chunk_overlap;
     document.getElementById('cfg-history').value   = c.max_history_turns;
+    // update recommended-value hints from server defaults
+    api('GET', '/config/defaults').then(d => {
+      const hm = {'hint-topk':'rag_top_k','hint-chunk':'chunk_size',
+                  'hint-overlap':'chunk_overlap','hint-history':'max_history_turns'};
+      Object.entries(hm).forEach(([id,k])=>{ if(d[k]!==undefined) document.getElementById(id).textContent=d[k]; });
+    }).catch(()=>{});
     clearConfigDirty();
     _cfgListenersAttached = false;
     _attachDirtyListeners();
