@@ -297,7 +297,7 @@ class BotIdentityPage(tk.Frame):
         tk.Label(body, text="บอทจะแนะนำตัวเองตามข้อมูลนี้ใน LINE",
                  font=("", 10), bg=C["BG"], fg=C["MUTED"]).pack(anchor="w", pady=(0, 14))
 
-        self.faculty_var = tk.StringVar(value=env.get("FACULTY_NAME", "คณะวิศวกรรมศาสตร์"))
+        self.faculty_var = tk.StringVar(value=env.get("FACULTY_NAME", ""))
         self.uni_var = tk.StringVar(value=env.get("UNIVERSITY_NAME", "มหาวิทยาลัยตัวอย่าง"))
 
         labeled_entry(body, "ชื่อคณะ / หน่วยงาน", self.faculty_var,
@@ -323,7 +323,7 @@ class BotIdentityPage(tk.Frame):
 
     def collect(self):
         return {
-            "FACULTY_NAME": self.faculty_var.get().strip() or "คณะวิศวกรรมศาสตร์",
+            "FACULTY_NAME": self.faculty_var.get().strip() or "หน่วยงานของคุณ",
             "UNIVERSITY_NAME": self.uni_var.get().strip() or "มหาวิทยาลัยตัวอย่าง",
         }
 

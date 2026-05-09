@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     ollama_chat_model: str = Field("llama3.2", env="OLLAMA_CHAT_MODEL")
     ollama_embed_model: str = Field("nomic-embed-text", env="OLLAMA_EMBED_MODEL")
 
-    faculty_name: str = Field("คณะวิศวกรรมศาสตร์", env="FACULTY_NAME")
+    faculty_name: str = Field("หน่วยงานของคุณ", env="FACULTY_NAME")
     university_name: str = Field("มหาวิทยาลัยตัวอย่าง", env="UNIVERSITY_NAME")
 
     rag_top_k: int = Field(5, env="RAG_TOP_K")
