@@ -1097,11 +1097,6 @@ async function loadAll() {
 async function loadStatus() {
   try {
     const s = await api('GET', '/status');
-    const faculty = s.bot.faculty || 'LINE Bot';
-    const university = s.bot.university || '';
-    document.getElementById('hdr-title').textContent = faculty + ' Admin';
-    document.getElementById('hdr-sub').textContent = university || faculty;
-    document.title = faculty + ' Admin ✦';
     const hBadge = document.getElementById('hdr-status');
     hBadge.innerHTML = s.ollama.healthy
       ? '<span class="dot dot-green pulse"></span> Ollama Online'

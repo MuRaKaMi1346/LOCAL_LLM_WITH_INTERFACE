@@ -443,9 +443,7 @@ class ControlPanel(tk.Frame):
         self._ngrok_url = ""
         self._opened_admin = False
 
-        _env = read_env()
-        _bot_name = _env.get("FACULTY_NAME") or "LINE Bot"
-        make_header(self, f"{_bot_name} Control", "LINE Bot + Ollama + RAG")
+        make_header(self, "LINE Bot", "Control Panel")
 
         # Status area
         status_outer = tk.Frame(self, bg=C["CARD"], padx=18, pady=12)
@@ -518,9 +516,7 @@ class ControlPanel(tk.Frame):
         tk.Button(bot_f, text="🌐 Admin", command=self.open_admin,
                   font=("", 10), bg=C["CARD"], relief="flat",
                   fg=C["PINK"], cursor="hand2").pack(side="left", padx=4)
-        env = read_env()
-        label_text = f"{env.get('FACULTY_NAME','')}  ·  {env.get('UNIVERSITY_NAME','')}"
-        tk.Label(bot_f, text=label_text, font=("", 10),
+        tk.Label(bot_f, text="LINE Bot + Ollama + RAG", font=("", 10),
                  bg=C["CARD"], fg=C["MUTED"]).pack(side="right", padx=12)
 
         _ngrok_installed = bool(shutil.which("ngrok"))
@@ -721,8 +717,7 @@ class ControlPanel(tk.Frame):
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
-        _bot_label = read_env().get("FACULTY_NAME") or "LINE Bot"
-        self.title(f"{_bot_label} — Control Panel")
+        self.title("LINE Bot — Control Panel")
         self.resizable(False, False)
         self._width, self._height = 520, 540
         self.geometry(f"{self._width}x{self._height}")
