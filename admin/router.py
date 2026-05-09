@@ -5,7 +5,7 @@ import sys
 import platform
 from pathlib import Path
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse
 from linebot.v3.messaging import (
     ApiClient,
@@ -22,6 +22,7 @@ from config import settings
 from services.ollama import ollama
 from services.rag import rag
 from state import app_state
+import httpx
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -221,6 +222,8 @@ async def hot_reload():
         "CHUNK_SIZE": ("chunk_size", int),
         "CHUNK_OVERLAP": ("chunk_overlap", int),
         "MAX_HISTORY_TURNS": ("max_history_turns", int),
+        "LINE_CHANNEL_ACCESS_TOKEN": ("line_channel_access_token", str),
+        "LINE_CHANNEL_SECRET": ("line_channel_secret", str),
     }
     changed = []
     for env_key, (attr, typ) in fields.items():
@@ -237,6 +240,10 @@ async def hot_reload():
     ollama.base_url = settings.ollama_base_url
     ollama.chat_model = settings.ollama_chat_model
     ollama.embed_model = settings.ollama_embed_model
+
+    # Reload webhook parser if LINE secret changed (no restart needed)
+    if "line_channel_secret" in changed:
+        app_state.reload_parser(settings.line_channel_secret)
 
     logger.info("Hot reload: updated %s", changed)
     return {"ok": True, "changed": changed}
@@ -405,6 +412,37 @@ async def save_quick_topics(data: dict):
         json.dumps(data.get("topics", []), ensure_ascii=False, indent=2), encoding="utf-8"
     )
     return {"ok": True}
+
+
+# ── Ollama Model Management ───────────────────────────────────────────────────
+
+@router.get("/api/ollama-models")
+async def list_ollama_models():
+    models = await ollama.list_models()
+    return {"models": models}
+
+
+async def _do_pull_model(model: str):
+    try:
+        logger.info("Starting model pull: %s", model)
+        async with httpx.AsyncClient(timeout=600.0) as client:
+            resp = await client.post(
+                f"{settings.ollama_base_url}/api/pull",
+                json={"name": model, "stream": False},
+            )
+            resp.raise_for_status()
+        logger.info("Model pull completed: %s", model)
+    except Exception as e:
+        logger.error("Model pull failed for %s: %s", model, e)
+
+
+@router.post("/api/ollama-pull")
+async def pull_model(data: dict, background_tasks: BackgroundTasks):
+    model = data.get("model", "").strip()
+    if not model:
+        raise HTTPException(400, "model ห้ามว่าง")
+    background_tasks.add_task(_do_pull_model, model)
+    return {"ok": True, "model": model, "message": f"เริ่ม pull {model} แล้ว ดูความคืบหน้าใน Logs"}
 
 
 # ── Test Chat ─────────────────────────────────────────────────────────────────

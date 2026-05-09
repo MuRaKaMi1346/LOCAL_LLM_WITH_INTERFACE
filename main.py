@@ -35,7 +35,6 @@ logging.getLogger("uvicorn.access").addFilter(_SuppressHealthCheck())
 logging.getLogger("chromadb.telemetry.product.posthog").setLevel(logging.CRITICAL)
 
 from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Request, status
-from linebot.v3 import WebhookParser
 from linebot.v3.exceptions import InvalidSignatureError
 from linebot.v3.webhooks import FollowEvent, MessageEvent, TextMessageContent, UnfollowEvent
 
@@ -45,9 +44,6 @@ from config import settings
 from services.ollama import ollama
 from services.rag import rag
 from state import app_state
-
-parser = WebhookParser(settings.line_channel_secret)
-
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -106,7 +102,7 @@ async def webhook(
 ):
     body = (await request.body()).decode("utf-8")
     try:
-        events = parser.parse(body, x_line_signature)
+        events = app_state.get_parser(settings.line_channel_secret).parse(body, x_line_signature)
     except InvalidSignatureError:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid signature")
     for event in events:
