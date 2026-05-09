@@ -306,12 +306,15 @@ async def document_content(filename: str):
 
 @router.post("/api/documents")
 async def upload_document(file: UploadFile = File(...)):
-    if not (file.filename.endswith(".md") or file.filename.endswith(".txt")):
+    safe_name = Path(file.filename).name
+    if not safe_name or "/" in safe_name or ".." in safe_name:
+        raise HTTPException(400, "ชื่อไฟล์ไม่ถูกต้อง")
+    if not (safe_name.endswith(".md") or safe_name.endswith(".txt")):
         raise HTTPException(400, "รองรับเฉพาะ .md และ .txt")
     DATA_DIR.mkdir(exist_ok=True)
     content = await file.read()
-    (DATA_DIR / file.filename).write_bytes(content)
-    return {"ok": True, "name": file.filename, "size": len(content)}
+    (DATA_DIR / safe_name).write_bytes(content)
+    return {"ok": True, "name": safe_name, "size": len(content)}
 
 
 @router.delete("/api/documents/{filename}")

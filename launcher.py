@@ -441,6 +441,7 @@ class ControlPanel(tk.Frame):
         self._ngrok_proc: subprocess.Popen | None = None
         self._running = False
         self._ngrok_url = ""
+        self._opened_admin = False
 
         _env = read_env()
         _bot_name = _env.get("FACULTY_NAME") or "LINE Bot"
@@ -487,23 +488,19 @@ class ControlPanel(tk.Frame):
                                    padx=22, pady=10, cursor="hand2", state="disabled")
         self._btn_stop.pack(side="left", padx=(0, 8))
 
-        tk.Button(btn_f, text="🌐 Admin Panel",
-                  command=self.open_admin, font=("", 12),
-                  bg=C["PINK"], fg="white", relief="flat",
-                  padx=18, pady=10, cursor="hand2",
-                  activebackground=C["PINK2"], activeforeground="white").pack(side="left")
-
         # Log area
         log_f = tk.Frame(self, bg=C["BG"])
         log_f.pack(fill="both", expand=True, padx=16, pady=(8, 0))
         tk.Label(log_f, text="Server Logs", font=("", 11, "bold"),
                  bg=C["BG"], fg=C["MUTED"]).pack(anchor="w")
+        sb = ttk.Scrollbar(log_f)
+        sb.pack(side="right", fill="y", pady=(4, 0))
         self._log = tk.Text(log_f, bg="#1A1A2E", fg="#E0E0FF",
                             font=("Menlo", 10), relief="flat",
-                            wrap="word", state="disabled", bd=0)
-        self._log.pack(fill="both", expand=True, pady=(4, 0))
-        sb = ttk.Scrollbar(log_f, command=self._log.yview)
-        sb.pack(side="right", fill="y")
+                            wrap="word", state="disabled", bd=0,
+                            yscrollcommand=sb.set)
+        self._log.pack(side="left", fill="both", expand=True, pady=(4, 0))
+        sb.config(command=self._log.yview)
         self._log.config(yscrollcommand=sb.set)
         # Color tags
         self._log.tag_config("ERROR", foreground="#FF6B6B")
@@ -518,6 +515,9 @@ class ControlPanel(tk.Frame):
         tk.Button(bot_f, text="⚙ ตั้งค่าใหม่", command=self._open_settings,
                   font=("", 10), bg=C["CARD"], relief="flat",
                   fg=C["MUTED"], cursor="hand2").pack(side="left", padx=12)
+        tk.Button(bot_f, text="🌐 Admin", command=self.open_admin,
+                  font=("", 10), bg=C["CARD"], relief="flat",
+                  fg=C["PINK"], cursor="hand2").pack(side="left", padx=4)
         env = read_env()
         label_text = f"{env.get('FACULTY_NAME','')}  ·  {env.get('UNIVERSITY_NAME','')}"
         tk.Label(bot_f, text=label_text, font=("", 10),
@@ -597,6 +597,7 @@ class ControlPanel(tk.Frame):
         self._proc = None
         self._ngrok_proc = None
         self._ngrok_url = ""
+        self._opened_admin = False
         self._set_status(self._st_server, "●", C["RED"], "หยุดแล้ว")
         self._set_status(self._st_ollama, "●", C["MUTED"], "รอ...")
         self._set_status(self._st_rag,    "●", C["MUTED"], "รอ...")
@@ -628,6 +629,11 @@ class ControlPanel(tk.Frame):
             data = r.json()
             def _upd():
                 self._set_status(self._st_server, "●", C["GREEN"], "Online ✓")
+                if not self._opened_admin:
+                    self._opened_admin = True
+                    threading.Thread(
+                        target=lambda: webbrowser.open(ADMIN_URL), daemon=True
+                    ).start()
                 if data.get("ollama", {}).get("healthy"):
                     model = data["ollama"].get("model", "")
                     self._set_status(self._st_ollama, "●", C["GREEN"], f"Online · {model}")
