@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-"""
-LINE Bot Launcher
-Setup wizard + server control panel
-macOS / Windows compatible (tkinter)
-"""
+from __future__ import annotations
 import os
 import re
 import sys
