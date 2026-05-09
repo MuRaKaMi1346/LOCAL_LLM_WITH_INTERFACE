@@ -29,6 +29,7 @@ router = APIRouter(prefix="/admin", tags=["admin"])
 
 _BASE = Path(__file__).parent.parent
 ENV_FILE       = _BASE / ".env"
+CONFIG_JSON    = _BASE / "config.json"
 DATA_DIR       = _BASE / "data"
 LOG_FILE       = _BASE / "logs" / "bot.log"
 CUSTOM_PROMPT  = _BASE / "custom_prompt.txt"
@@ -187,74 +188,82 @@ async def get_config_defaults():
 
 @router.post("/api/config")
 async def update_config(data: ConfigPayload):
-    if not ENV_FILE.exists():
-        raise HTTPException(404, ".env ไม่พบ")
-    text = ENV_FILE.read_text(encoding="utf-8")
-    updates = {
-        "FACULTY_NAME": data.faculty_name,
-        "UNIVERSITY_NAME": data.university_name,
-        "OLLAMA_BASE_URL": data.ollama_base_url,
-        "OLLAMA_CHAT_MODEL": data.ollama_chat_model,
-        "OLLAMA_EMBED_MODEL": data.ollama_embed_model,
-        "RAG_TOP_K": str(data.rag_top_k),
-        "CHUNK_SIZE": str(data.chunk_size),
-        "CHUNK_OVERLAP": str(data.chunk_overlap),
-        "MAX_HISTORY_TURNS": str(data.max_history_turns),
+    payload = {
+        "faculty_name":      data.faculty_name,
+        "university_name":   data.university_name,
+        "ollama_base_url":   data.ollama_base_url,
+        "ollama_chat_model": data.ollama_chat_model,
+        "ollama_embed_model":data.ollama_embed_model,
+        "rag_top_k":         data.rag_top_k,
+        "chunk_size":        data.chunk_size,
+        "chunk_overlap":     data.chunk_overlap,
+        "max_history_turns": data.max_history_turns,
     }
-    for key, val in updates.items():
-        pattern = rf"^{key}=.*$"
-        if re.search(pattern, text, re.MULTILINE):
-            text = re.sub(pattern, f"{key}={val}", text, flags=re.MULTILINE)
-        else:
-            text += f"\n{key}={val}"
-    ENV_FILE.write_text(text, encoding="utf-8")
+    CONFIG_JSON.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+    )
+    for key, val in payload.items():
+        object.__setattr__(settings, key, val)
+    ollama.base_url   = settings.ollama_base_url
+    ollama.chat_model = settings.ollama_chat_model
+    ollama.embed_model = settings.ollama_embed_model
     return {"ok": True}
 
 
 @router.post("/api/reload")
 async def hot_reload():
-    """Apply .env changes to running process without restart."""
-    if not ENV_FILE.exists():
-        raise HTTPException(404, ".env ไม่พบ")
-
-    env_vals: dict[str, str] = {}
-    for line in ENV_FILE.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        k, _, v = line.partition("=")
-        env_vals[k.strip()] = v.strip()
-
-    fields = {
-        "FACULTY_NAME": ("faculty_name", str),
-        "UNIVERSITY_NAME": ("university_name", str),
-        "OLLAMA_BASE_URL": ("ollama_base_url", str),
-        "OLLAMA_CHAT_MODEL": ("ollama_chat_model", str),
-        "OLLAMA_EMBED_MODEL": ("ollama_embed_model", str),
-        "RAG_TOP_K": ("rag_top_k", int),
-        "CHUNK_SIZE": ("chunk_size", int),
-        "CHUNK_OVERLAP": ("chunk_overlap", int),
-        "MAX_HISTORY_TURNS": ("max_history_turns", int),
-        "LINE_CHANNEL_ACCESS_TOKEN": ("line_channel_access_token", str),
-        "LINE_CHANNEL_SECRET": ("line_channel_secret", str),
-    }
+    """Apply latest secrets (.env) and runtime config (config.json) without restart."""
     changed = []
-    for env_key, (attr, typ) in fields.items():
-        if env_key in env_vals:
-            try:
-                new_val = typ(env_vals[env_key])
-                if getattr(settings, attr) != new_val:
-                    object.__setattr__(settings, attr, new_val)
-                    changed.append(attr)
-            except Exception:
-                pass
+
+    # LINE secrets from .env only
+    if ENV_FILE.exists():
+        env_vals: dict[str, str] = {}
+        for line in ENV_FILE.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            k, _, v = line.partition("=")
+            env_vals[k.strip()] = v.strip()
+        for env_key, (attr, typ) in {
+            "LINE_CHANNEL_ACCESS_TOKEN": ("line_channel_access_token", str),
+            "LINE_CHANNEL_SECRET":       ("line_channel_secret", str),
+        }.items():
+            if env_key in env_vals:
+                try:
+                    new_val = typ(env_vals[env_key])
+                    if getattr(settings, attr) != new_val:
+                        object.__setattr__(settings, attr, new_val)
+                        changed.append(attr)
+                except Exception:
+                    pass
+
+    # Runtime config from config.json
+    if CONFIG_JSON.exists():
+        try:
+            data = json.loads(CONFIG_JSON.read_text(encoding="utf-8"))
+            runtime_types = {
+                "faculty_name": str, "university_name": str,
+                "ollama_base_url": str, "ollama_chat_model": str, "ollama_embed_model": str,
+                "rag_top_k": int, "chunk_size": int, "chunk_overlap": int,
+                "max_history_turns": int,
+            }
+            for key, typ in runtime_types.items():
+                if key in data:
+                    try:
+                        new_val = typ(data[key])
+                        if getattr(settings, key) != new_val:
+                            object.__setattr__(settings, key, new_val)
+                            changed.append(key)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
 
     # Sync Ollama client
-    ollama.base_url = settings.ollama_base_url
-    ollama.chat_model = settings.ollama_chat_model
+    ollama.base_url    = settings.ollama_base_url
+    ollama.chat_model  = settings.ollama_chat_model
     ollama.embed_model = settings.ollama_embed_model
 
-    # Reload webhook parser if LINE secret changed (no restart needed)
     if "line_channel_secret" in changed:
         app_state.reload_parser(settings.line_channel_secret)
 

@@ -1,5 +1,16 @@
+import json
+from pathlib import Path
+
 from pydantic_settings import BaseSettings
 from pydantic import Field
+
+_CONFIG_JSON = Path("config.json")
+
+_RUNTIME_KEYS = frozenset({
+    "ollama_base_url", "ollama_chat_model", "ollama_embed_model",
+    "faculty_name", "university_name",
+    "rag_top_k", "chunk_size", "chunk_overlap", "max_history_turns",
+})
 
 
 class Settings(BaseSettings):
@@ -24,4 +35,17 @@ class Settings(BaseSettings):
         env_file_encoding = "utf-8"
 
 
-settings = Settings()
+def _apply_config_json(s: Settings) -> Settings:
+    if not _CONFIG_JSON.exists():
+        return s
+    try:
+        data = json.loads(_CONFIG_JSON.read_text(encoding="utf-8"))
+        updates = {k: v for k, v in data.items() if k in _RUNTIME_KEYS}
+        if updates:
+            return s.model_copy(update=updates)
+    except Exception:
+        pass
+    return s
+
+
+settings = _apply_config_json(Settings())
