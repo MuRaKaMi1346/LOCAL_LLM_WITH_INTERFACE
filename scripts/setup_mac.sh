@@ -13,7 +13,7 @@ PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$PROJECT_DIR"
 
 VENV_DIR="$PROJECT_DIR/.venv"
-APP_BUNDLE="$PROJECT_DIR/LineBot.app"
+APP_BUNDLE="$PROJECT_DIR/launcher/LineBot.app"
 APP_EXEC="$APP_BUNDLE/Contents/MacOS/LineBot"
 
 # ── Pretty printer ───────────────────────────────────────────────────────────
@@ -203,6 +203,6 @@ if [[ ! "$LAUNCH" =~ ^[Nn]$ ]]; then
     if [ -d "$APP_BUNDLE" ]; then
         open "$APP_BUNDLE"
     else
-        "$VENV_PY" "$PROJECT_DIR/launcher.py"
+        "$VENV_PY" "$PROJECT_DIR/launcher/launcher.py"
     fi
 fi
