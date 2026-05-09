@@ -21,11 +21,13 @@
 
 > **หมายเหตุ:** ถ้าติดตั้ง Python หรือ Ollama ใหม่ จะมีข้อความให้ปิด-เปิด window แล้วรัน `start.bat` อีกครั้ง
 
-> **ngrok Auth Token (แนะนำ):** สมัครฟรีที่ [ngrok.com](https://ngrok.com) แล้วใส่ token ใน `.env`:
+> **LINE Token & ค่าต่างๆ:** ตั้งค่าได้ทั้งหมดในหน้า **Admin Panel → Credentials / Config** — บันทึกลง `config.json` อัตโนมัติ ไม่ต้องแก้ไฟล์เอง
+>
+> **ngrok Auth Token (แนะนำ):** สมัครฟรีที่ [ngrok.com](https://ngrok.com) แล้วใส่ใน Admin → Credentials หรือสร้างไฟล์ `.env`:
 > ```
 > NGROK_AUTH_TOKEN=your_token_here
 > ```
-> GUI จะ set token ให้อัตโนมัติเมื่อ Start — ไม่มี token ก็ใช้งานได้แต่ URL จะเปลี่ยนทุกครั้ง
+> ไม่มี token ก็ใช้งานได้แต่ URL จะเปลี่ยนทุกครั้ง
 
 ---
 
@@ -115,7 +117,7 @@ LINE Bot/
 ## Docker
 
 ```bash
-# 1. สร้าง .env จาก template แล้วกรอก LINE credentials
+# 1. (optional) สร้าง .env สำหรับ ngrok token
 cp .env.example .env
 
 # 2. รัน Ollama + linebot พร้อมกัน
