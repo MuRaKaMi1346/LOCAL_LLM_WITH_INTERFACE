@@ -708,6 +708,9 @@ class ControlPanel(tk.Frame):
                 if t.get("proto") == "https":
                     url = t["public_url"]
                     webhook = url + "/webhook"
+                    threading.Thread(
+                        target=self._sync_line_webhook, args=(webhook,), daemon=True
+                    ).start()
                     def _upd(u=url, w=webhook):
                         self._ngrok_url = w
                         self._set_status(self._st_ngrok, "●", C["GREEN"],
@@ -716,12 +719,34 @@ class ControlPanel(tk.Frame):
                         self._btn_copy.config(state="normal")
                     self.after(0, _upd)
                     return
-            # No HTTPS tunnel yet
             self.after(0, lambda: self._set_status(
                 self._st_ngrok, "⏳", C["ORANGE"], "รอ tunnel..."))
         except Exception:
             self.after(0, lambda: self._set_status(
                 self._st_ngrok, "⏳", C["ORANGE"], "กำลังเชื่อมต่อ..."))
+
+    def _sync_line_webhook(self, webhook_url: str):
+        cfg = read_config()
+        token = cfg.get("line_channel_access_token", "").strip()
+        if not token:
+            return
+        try:
+            import httpx
+            r = httpx.put(
+                "https://api.line.me/v2/bot/channel/webhook/endpoint",
+                headers={"Authorization": f"Bearer {token}"},
+                json={"webhookEndpointUrl": webhook_url},
+                timeout=10,
+            )
+            if r.status_code == 200:
+                self.after(0, lambda: self._log_write(
+                    f"✓ LINE webhook อัปเดตอัตโนมัติ: {webhook_url}\n", "OK"))
+            else:
+                self.after(0, lambda: self._log_write(
+                    f"⚠ LINE webhook sync failed: {r.status_code} {r.text}\n", "WARNING"))
+        except Exception as e:
+            self.after(0, lambda: self._log_write(
+                f"⚠ LINE webhook sync error: {e}\n", "WARNING"))
 
     def _copy_url(self):
         if self._ngrok_url:
