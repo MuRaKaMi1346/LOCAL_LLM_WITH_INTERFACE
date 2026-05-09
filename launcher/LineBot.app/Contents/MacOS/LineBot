@@ -6,7 +6,7 @@ set -euo pipefail
 
 # ── Resolve paths ────────────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 VENV_DIR="$PROJECT_ROOT/.venv"
 PYTHON="$VENV_DIR/bin/python"
 
@@ -23,11 +23,11 @@ if [ ! -f "$PYTHON" ]; then
     osascript <<EOF
 tell application "Terminal"
     activate
-    do script "bash '$SETUP' && open '$PROJECT_ROOT/LineBot.app'"
+    do script "bash '$SETUP' && open '$PROJECT_ROOT/launcher/LineBot.app'"
 end tell
 EOF
     exit 0
 fi
 
 # ── Launch GUI ───────────────────────────────────────────────────────────────
-exec "$PYTHON" "$PROJECT_ROOT/launcher.py"
+exec "$PYTHON" "$PROJECT_ROOT/launcher/launcher.py"

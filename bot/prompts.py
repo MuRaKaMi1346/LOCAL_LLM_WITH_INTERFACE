@@ -3,9 +3,10 @@ from pathlib import Path
 
 from config import settings
 
-_CUSTOM_PROMPT_FILE = Path("custom_prompt.txt")
-_CUSTOM_TOPICS_FILE = Path("custom_quick_topics.json")
-_CUSTOM_WELCOME_FILE = Path("custom_welcome.txt")
+_CUSTOM_DIR = Path("custom")
+_CUSTOM_PROMPT_FILE = _CUSTOM_DIR / "prompt.txt"
+_CUSTOM_TOPICS_FILE = _CUSTOM_DIR / "quick_topics.json"
+_CUSTOM_WELCOME_FILE = _CUSTOM_DIR / "welcome.txt"
 
 _SYSTEM_TEMPLATE = """คุณคือผู้ช่วยของ{faculty_name} {university_name}
 

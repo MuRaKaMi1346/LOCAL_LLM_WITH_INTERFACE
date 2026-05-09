@@ -15,4 +15,4 @@ if [ ! -f "$VENV_PY" ]; then
     exit 0
 fi
 
-exec "$VENV_PY" launcher.py
+exec "$VENV_PY" launcher/launcher.py

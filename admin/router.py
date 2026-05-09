@@ -32,9 +32,10 @@ ENV_FILE       = _BASE / ".env"
 CONFIG_JSON    = _BASE / "config.json"
 DATA_DIR       = _BASE / "data"
 LOG_FILE       = _BASE / "logs" / "bot.log"
-CUSTOM_PROMPT  = _BASE / "custom_prompt.txt"
-CUSTOM_TOPICS  = _BASE / "custom_quick_topics.json"
-CUSTOM_WELCOME = _BASE / "custom_welcome.txt"
+_CUSTOM        = _BASE / "custom"
+CUSTOM_PROMPT  = _CUSTOM / "prompt.txt"
+CUSTOM_TOPICS  = _CUSTOM / "quick_topics.json"
+CUSTOM_WELCOME = _CUSTOM / "welcome.txt"
 
 
 # ── HTML ──────────────────────────────────────────────────────────────────────

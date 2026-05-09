@@ -148,7 +148,7 @@ echo  [OK] All dependencies installed.
 :: ══════════════════════════════════════════════════════════════════════════════
 echo  Launching LINE Bot...
 echo.
-.venv\Scripts\python.exe launcher.py
+.venv\Scripts\python.exe launcher\launcher.py
 if errorlevel 1 goto :fail
 exit /b 0
 

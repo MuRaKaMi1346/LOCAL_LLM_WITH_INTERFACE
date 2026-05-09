@@ -27,9 +27,9 @@ chroma_db/
 .chroma/
 
 # ── Custom overrides (user-edited, not tracked) ───────────────────────────────
-custom_prompt.txt
-custom_welcome.txt
-custom_quick_topics.json
+custom/prompt.txt
+custom/welcome.txt
+custom/quick_topics.json
 
 # ── macOS ─────────────────────────────────────────────────────────────────────
 .DS_Store

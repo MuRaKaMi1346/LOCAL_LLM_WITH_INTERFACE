@@ -18,10 +18,11 @@ import tkinter as tk
 from tkinter import ttk, messagebox, scrolledtext
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
-PROJECT_DIR = Path(__file__).resolve().parent
-ENV_FILE = PROJECT_DIR / ".env"
-ADMIN_URL = "http://localhost:8000/admin"
-HEALTH_URL = "http://localhost:8000/health"
+PROJECT_DIR  = Path(__file__).resolve().parent.parent   # launcher/ → project root
+CONFIG_JSON  = PROJECT_DIR / "config.json"
+ENV_FILE     = PROJECT_DIR / ".env"
+ADMIN_URL    = "http://localhost:8000/admin"
+HEALTH_URL   = "http://localhost:8000/health"
 
 # Use venv's python.exe (not pythonw) so the server process has stdout/stderr
 _venv_py_win = PROJECT_DIR / ".venv" / "Scripts" / "python.exe"
@@ -32,7 +33,7 @@ SERVER_PYTHON = str(
     sys.executable
 )
 
-REQUIRED = ("LINE_CHANNEL_ACCESS_TOKEN", "LINE_CHANNEL_SECRET")
+REQUIRED = ("line_channel_access_token", "line_channel_secret")
 
 # ── Palette ───────────────────────────────────────────────────────────────────
 C = dict(
@@ -68,7 +69,24 @@ def _kill_proc(proc: subprocess.Popen | None) -> None:
             pass
 
 
-# ── .env helpers ──────────────────────────────────────────────────────────────
+# ── config.json helpers ───────────────────────────────────────────────────────
+
+def read_config() -> dict:
+    if not CONFIG_JSON.exists():
+        return {}
+    try:
+        import json
+        return json.loads(CONFIG_JSON.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def write_config(updates: dict):
+    import json
+    cfg = read_config()
+    cfg.update(updates)
+    CONFIG_JSON.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
+
 
 def read_env() -> dict:
     if not ENV_FILE.exists():
@@ -83,20 +101,9 @@ def read_env() -> dict:
     return out
 
 
-def write_env(updates: dict):
-    text = ENV_FILE.read_text(encoding="utf-8") if ENV_FILE.exists() else "# LINE Bot Configuration\n"
-    for key, val in updates.items():
-        pat = rf"^{re.escape(key)}=.*$"
-        if re.search(pat, text, re.MULTILINE):
-            text = re.sub(pat, f"{key}={val}", text, flags=re.MULTILINE)
-        else:
-            text = text.rstrip("\n") + f"\n{key}={val}\n"
-    ENV_FILE.write_text(text, encoding="utf-8")
-
-
 def env_is_complete() -> bool:
-    env = read_env()
-    return all(env.get(k, "").strip() for k in REQUIRED)
+    cfg = read_config()
+    return all(cfg.get(k, "").strip() for k in REQUIRED)
 
 
 # ── Widget helpers ────────────────────────────────────────────────────────────
@@ -167,7 +174,7 @@ class SetupWizard(tk.Toplevel):
         self.geometry(f"{w}x{h}+{(sw-w)//2}+{(sh-h)//2}")
 
     def _build(self):
-        env = read_env()
+        cfg = read_config()
 
         # Pages
         self._container = tk.Frame(self, bg=C["BG"])
@@ -175,9 +182,9 @@ class SetupWizard(tk.Toplevel):
 
         self._pages = [
             WelcomePage(self._container, self),
-            LineCredPage(self._container, self, env),
-            BotIdentityPage(self._container, self, env),
-            OllamaPage(self._container, self, env),
+            LineCredPage(self._container, self, cfg),
+            BotIdentityPage(self._container, self, cfg),
+            OllamaPage(self._container, self, cfg),
             ReviewPage(self._container, self),
         ]
 
@@ -237,7 +244,7 @@ class SetupWizard(tk.Toplevel):
             self._show_page(self._idx - 1)
 
     def _finish(self):
-        write_env(self._data)
+        write_config(self._data)
         self.destroy()
         self.on_done()
 
@@ -288,8 +295,8 @@ class LineCredPage(tk.Frame):
         link.bind("<Button-1>", open_line)
         link.pack(anchor="w", pady=(0, 12))
 
-        self.token_var = tk.StringVar(value=env.get("LINE_CHANNEL_ACCESS_TOKEN", ""))
-        self.secret_var = tk.StringVar(value=env.get("LINE_CHANNEL_SECRET", ""))
+        self.token_var = tk.StringVar(value=cfg.get("line_channel_access_token", ""))
+        self.secret_var = tk.StringVar(value=cfg.get("line_channel_secret", ""))
 
         labeled_entry(body, "Channel Access Token *", self.token_var,
                       hint="ยาวมาก (ขึ้นต้นด้วย eyJ...)")
@@ -307,8 +314,8 @@ class LineCredPage(tk.Frame):
 
     def collect(self):
         return {
-            "LINE_CHANNEL_ACCESS_TOKEN": self.token_var.get().strip(),
-            "LINE_CHANNEL_SECRET": self.secret_var.get().strip(),
+            "line_channel_access_token": self.token_var.get().strip(),
+            "line_channel_secret": self.secret_var.get().strip(),
         }
 
 
@@ -322,8 +329,8 @@ class BotIdentityPage(tk.Frame):
         tk.Label(body, text="บอทจะแนะนำตัวเองตามข้อมูลนี้ใน LINE",
                  font=("", 10), bg=C["BG"], fg=C["MUTED"]).pack(anchor="w", pady=(0, 14))
 
-        self.faculty_var = tk.StringVar(value=env.get("FACULTY_NAME", ""))
-        self.uni_var = tk.StringVar(value=env.get("UNIVERSITY_NAME", "มหาวิทยาลัยตัวอย่าง"))
+        self.faculty_var = tk.StringVar(value=cfg.get("faculty_name", ""))
+        self.uni_var = tk.StringVar(value=cfg.get("university_name", "มหาวิทยาลัยตัวอย่าง"))
 
         labeled_entry(body, "ชื่อคณะ / หน่วยงาน", self.faculty_var,
                       hint="เช่น คณะวิทยาศาสตร์, งานทะเบียน, สำนักงานอธิการบดี")
@@ -348,8 +355,8 @@ class BotIdentityPage(tk.Frame):
 
     def collect(self):
         return {
-            "FACULTY_NAME": self.faculty_var.get().strip() or "หน่วยงานของคุณ",
-            "UNIVERSITY_NAME": self.uni_var.get().strip() or "มหาวิทยาลัยตัวอย่าง",
+            "faculty_name": self.faculty_var.get().strip() or "หน่วยงานของคุณ",
+            "university_name": self.uni_var.get().strip() or "มหาวิทยาลัยตัวอย่าง",
         }
 
 
@@ -367,9 +374,9 @@ class OllamaPage(tk.Frame):
         link.bind("<Button-1>", open_ollama)
         link.pack(anchor="w", pady=(0, 10))
 
-        self.url_var = tk.StringVar(value=env.get("OLLAMA_BASE_URL", "http://localhost:11434"))
-        self.chat_var = tk.StringVar(value=env.get("OLLAMA_CHAT_MODEL", "llama3.2"))
-        self.embed_var = tk.StringVar(value=env.get("OLLAMA_EMBED_MODEL", "nomic-embed-text"))
+        self.url_var = tk.StringVar(value=cfg.get("ollama_base_url", "http://localhost:11434"))
+        self.chat_var = tk.StringVar(value=cfg.get("ollama_chat_model", "llama3.2"))
+        self.embed_var = tk.StringVar(value=cfg.get("ollama_embed_model", "nomic-embed-text"))
 
         labeled_entry(body, "Ollama URL", self.url_var)
         labeled_entry(body, "Chat Model", self.chat_var,
@@ -405,9 +412,9 @@ class OllamaPage(tk.Frame):
 
     def collect(self):
         return {
-            "OLLAMA_BASE_URL": self.url_var.get().strip(),
-            "OLLAMA_CHAT_MODEL": self.chat_var.get().strip(),
-            "OLLAMA_EMBED_MODEL": self.embed_var.get().strip(),
+            "ollama_base_url": self.url_var.get().strip(),
+            "ollama_chat_model": self.chat_var.get().strip(),
+            "ollama_embed_model": self.embed_var.get().strip(),
         }
 
 
@@ -440,13 +447,14 @@ class ReviewPage(tk.Frame):
 
     def _refresh(self):
         d = self.wizard._data
+        token = d.get('line_channel_access_token', '')
         lines = [
-            f"✓ LINE Token   : {d.get('LINE_CHANNEL_ACCESS_TOKEN','')[:16]}...",
+            f"✓ LINE Token   : {token[:16]}..." if token else "✗ LINE Token   : (ยังไม่ได้ใส่)",
             f"✓ LINE Secret  : {'•'*8}",
-            f"✓ คณะ          : {d.get('FACULTY_NAME','')}",
-            f"✓ มหาวิทยาลัย  : {d.get('UNIVERSITY_NAME','')}",
-            f"✓ Ollama URL   : {d.get('OLLAMA_BASE_URL','')}",
-            f"✓ Chat Model   : {d.get('OLLAMA_CHAT_MODEL','')}",
+            f"✓ คณะ          : {d.get('faculty_name','')}",
+            f"✓ มหาวิทยาลัย  : {d.get('university_name','')}",
+            f"✓ Ollama URL   : {d.get('ollama_base_url','')}",
+            f"✓ Chat Model   : {d.get('ollama_chat_model','')}",
         ]
         self._summary.config(state="normal")
         self._summary.delete("1.0", "end")
