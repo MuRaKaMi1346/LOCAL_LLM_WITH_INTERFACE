@@ -764,10 +764,7 @@ class App(tk.Tk):
 
         self._panel: ControlPanel | None = None
 
-        if env_is_complete():
-            self._show_control()
-        else:
-            self._show_wizard()
+        self._show_control()
 
     def _center(self):
         sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
