@@ -1,4 +1,5 @@
 import logging
+import re
 
 from linebot.v3.messaging import (
     ApiClient,
@@ -32,6 +33,16 @@ from services.rag import rag
 from state import app_state
 
 logger = logging.getLogger(__name__)
+
+
+def _strip_markdown(text: str) -> str:
+    text = re.sub(r'\*\*(.+?)\*\*', r'\1', text)      # **bold**
+    text = re.sub(r'__(.+?)__', r'\1', text)            # __bold__
+    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)   # ## headers
+    text = re.sub(r'^\s*[-*_]{3,}\s*$', '', text, flags=re.MULTILINE)  # --- ***
+    text = re.sub(r'\*{1,3}', '', text)                 # stray * left over
+    text = re.sub(r'\n{3,}', '\n\n', text)              # collapse blank lines
+    return text.strip()
 
 
 def _line_api() -> MessagingApi:
@@ -97,6 +108,7 @@ async def handle_text_message(event: MessageEvent) -> None:
         logger.error("Ollama error for user %s: %s", user_id, exc)
         answer = "ขออภัยครับ เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง"
 
+    answer = _strip_markdown(answer)
     session.add_assistant(answer)
     await _reply(reply_token, answer, quick_reply=_quick_reply_menu())
 
