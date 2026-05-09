@@ -22,7 +22,7 @@ class OllamaService:
             "model": self.chat_model,
             "messages": all_messages,
             "stream": False,
-            "options": {"temperature": 0.3, "top_p": 0.9, "num_ctx": 8192},
+            "options": {"temperature": 0.5, "top_p": 0.9, "num_ctx": 8192},
         }
         try:
             r = await self.client.post(f"{self.base_url}/api/chat", json=payload)
