@@ -1,25 +1,22 @@
 #!/usr/bin/env bash
-# LineBot.app launcher — finds the project root (3 levels up from this script),
-# activates the venv, then starts the tkinter control panel.
+# LineBot.app launcher — finds framework Python for tkinter on macOS
 
 set -euo pipefail
 
-# ── Resolve paths ────────────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd)"
 VENV_DIR="$PROJECT_ROOT/.venv"
-PYTHON="$VENV_DIR/bin/python"
+VENV_PY="$VENV_DIR/bin/python"
 
 cd "$PROJECT_ROOT"
 
-# ── First-run: venv not yet created → call scripts/setup_mac.sh ─────────────
-if [ ! -f "$PYTHON" ]; then
+# First-run: venv not yet created
+if [ ! -f "$VENV_PY" ]; then
     SETUP="$PROJECT_ROOT/scripts/setup_mac.sh"
     if [ ! -f "$SETUP" ]; then
         osascript -e 'display alert "LINE Bot Setup" message "scripts/setup_mac.sh not found.\nPlease run: bash scripts/setup_mac.sh" as critical'
         exit 1
     fi
-    # Open Terminal and run setup, then relaunch the app
     osascript <<EOF
 tell application "Terminal"
     activate
@@ -29,5 +26,25 @@ EOF
     exit 0
 fi
 
-# ── Launch GUI ───────────────────────────────────────────────────────────────
-exec "$PYTHON" "$PROJECT_ROOT/launcher/launcher.py"
+# macOS: tkinter requires a framework Python build.
+VENV_SITE="$("$VENV_PY" -c 'import site; print(site.getsitepackages()[0])' 2>/dev/null || true)"
+FRAMEWORK_PY=""
+for candidate in \
+    "/opt/homebrew/opt/python@3.13/Frameworks/Python.framework/Versions/3.13/bin/python3.13" \
+    "/opt/homebrew/opt/python@3.12/Frameworks/Python.framework/Versions/3.12/bin/python3.12" \
+    "/opt/homebrew/opt/python@3.11/Frameworks/Python.framework/Versions/3.11/bin/python3.11" \
+    "/usr/local/opt/python@3.12/Frameworks/Python.framework/Versions/3.12/bin/python3.12" \
+    "/Library/Frameworks/Python.framework/Versions/3.12/bin/python3.12" \
+    "/Library/Frameworks/Python.framework/Versions/3.11/bin/python3.11" \
+; do
+    if [ -f "$candidate" ]; then
+        FRAMEWORK_PY="$candidate"
+        break
+    fi
+done
+
+if [ -n "$FRAMEWORK_PY" ] && [ -n "$VENV_SITE" ]; then
+    exec env PYTHONPATH="$VENV_SITE" "$FRAMEWORK_PY" "$PROJECT_ROOT/launcher/launcher.py"
+fi
+
+exec "$VENV_PY" "$PROJECT_ROOT/launcher/launcher.py"
