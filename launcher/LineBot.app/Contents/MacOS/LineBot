@@ -1,6 +1,4 @@
 #!/usr/bin/env bash
-# LineBot.app launcher — uses framework Python for tkinter on macOS
-
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -9,7 +7,6 @@ VENV_PY="$PROJECT_ROOT/.venv/bin/python"
 
 cd "$PROJECT_ROOT"
 
-# First-run: venv not yet created
 if [ ! -f "$VENV_PY" ]; then
     SETUP="$PROJECT_ROOT/scripts/setup_mac.sh"
     if [ ! -f "$SETUP" ]; then
@@ -25,27 +22,40 @@ EOF
     exit 0
 fi
 
-# Ask the venv Python itself where its framework executable lives
+VENV_SITE=$("$VENV_PY" -c "import site; print(site.getsitepackages()[0])" 2>/dev/null || true)
+
 FRAMEWORK_PY=$("$VENV_PY" - <<'PYEOF' 2>/dev/null
-import sysconfig, os, glob
+import sysconfig, os, glob, subprocess, sys
+
+def has_tk(py):
+    try:
+        r = subprocess.run([py, '-c', 'import _tkinter'],
+                           capture_output=True, timeout=5)
+        return r.returncode == 0
+    except Exception:
+        return False
+
 prefix = sysconfig.get_config_var("PYTHONFRAMEWORKPREFIX") or ""
 candidate = os.path.join(prefix, "Resources/Python.app/Contents/MacOS/Python")
-if os.path.isfile(candidate):
+if os.path.isfile(candidate) and has_tk(candidate):
     print(candidate)
-else:
-    patterns = [
-        "/opt/homebrew/Cellar/python@3.*/*/Frameworks/Python.framework/Versions/*/Resources/Python.app/Contents/MacOS/Python",
-        "/usr/local/Cellar/python@3.*/*/Frameworks/Python.framework/Versions/*/Resources/Python.app/Contents/MacOS/Python",
-    ]
-    for p in patterns:
-        matches = sorted(glob.glob(p), reverse=True)
-        if matches:
-            print(matches[0])
-            break
+    sys.exit(0)
+
+ver = f"python@{sys.version_info.major}.{sys.version_info.minor}"
+patterns = [
+    f"/opt/homebrew/Cellar/{ver}/*/Frameworks/Python.framework/Versions/*/Resources/Python.app/Contents/MacOS/Python",
+    f"/usr/local/Cellar/{ver}/*/Frameworks/Python.framework/Versions/*/Resources/Python.app/Contents/MacOS/Python",
+    "/opt/homebrew/Cellar/python@3.*/*/Frameworks/Python.framework/Versions/*/Resources/Python.app/Contents/MacOS/Python",
+    "/usr/local/Cellar/python@3.*/*/Frameworks/Python.framework/Versions/*/Resources/Python.app/Contents/MacOS/Python",
+    "/Library/Frameworks/Python.framework/Versions/3.*/Resources/Python.app/Contents/MacOS/Python",
+]
+for p in patterns:
+    for match in sorted(glob.glob(p)):
+        if has_tk(match):
+            print(match)
+            sys.exit(0)
 PYEOF
 )
-
-VENV_SITE=$("$VENV_PY" -c "import site; print(site.getsitepackages()[0])" 2>/dev/null || true)
 
 if [ -n "$FRAMEWORK_PY" ] && [ -f "$FRAMEWORK_PY" ] && [ -n "$VENV_SITE" ]; then
     exec env PYTHONPATH="$VENV_SITE" "$FRAMEWORK_PY" "$PROJECT_ROOT/launcher/launcher.py"
