@@ -1,19 +1,60 @@
-# 🌸 LINE Bot
+# 🌸 LINE Bot — Local AI
 
-ระบบ LINE Bot สำหรับตอบคำถามเกี่ยวกับคณะ โดยใช้ Ollama (LLM ท้องถิ่น) และ RAG (Retrieval-Augmented Generation)  
+ระบบ LINE Bot สำหรับตอบคำถาม โดยใช้ Ollama (LLM ท้องถิ่น) และ RAG (Retrieval-Augmented Generation)  
 มี Admin Panel สำหรับจัดการทุกอย่างผ่าน Web UI โดยไม่ต้องแก้โค้ด
+
+---
+
+## เริ่มต้นใช้งาน
+
+### Windows — ดับเบิลคลิกเดียวจบ
+
+1. ดาวน์โหลดโปรเจกต์และแตกไฟล์
+2. ดับเบิลคลิก **`start.bat`**
+
+`start.bat` จะติดตั้งทุกอย่างอัตโนมัติ:
+- ✅ Python 3.12 (ถ้ายังไม่มี)
+- ✅ Ollama (ถ้ายังไม่มี)
+- ✅ Python dependencies ทั้งหมด
+- ✅ เปิด GUI Control Panel
+
+> **หมายเหตุ:** ถ้าติดตั้ง Python หรือ Ollama ใหม่ จะมีข้อความให้ปิด-เปิด window แล้วรัน `start.bat` อีกครั้ง
+
+---
+
+### macOS — รันครั้งเดียว
+
+1. ดาวน์โหลดโปรเจกต์
+2. รัน setup script ครั้งเดียว:
+
+```bash
+bash scripts/setup_mac.sh
+```
+
+setup script จะติดตั้งทุกอย่างอัตโนมัติ:
+- ✅ Homebrew (ถ้ายังไม่มี)
+- ✅ Python 3.12 + tkinter (ถ้ายังไม่มี)
+- ✅ Ollama (ถ้ายังไม่มี)
+- ✅ Python dependencies ทั้งหมด
+- ✅ ตั้งค่า LineBot.app
+
+3. เปิดแอพครั้งต่อไปด้วย:
+   - `bash start.sh`
+   - หรือดับเบิลคลิก **`LineBot.app`**
 
 ---
 
 ## โครงสร้างโปรเจกต์
 
 ```
-local ai/
+LINE Bot/
 │
 ├── main.py               ← FastAPI entry point
 ├── config.py             ← การตั้งค่า (pydantic-settings)
 ├── state.py              ← สถานะ runtime (bot on/off, นับข้อความ)
 ├── launcher.py           ← GUI launcher (Windows / macOS)
+├── start.bat             ← Windows one-click starter (auto-installs everything)
+├── start.sh              ← macOS/Linux quick launcher
 │
 ├── bot/                  ← ลอจิก LINE Bot
 │   ├── handler.py        ← รับ event (follow / ข้อความ / unfollow)
@@ -31,12 +72,11 @@ local ai/
 ├── data/                 ← Knowledge base (.md / .txt)
 │   └── faculty_knowledge.md
 │
-├── scripts/              ← ตัวช่วย setup (รันครั้งเดียว)
-│   ├── setup_ollama.py   ← ดาวน์โหลด Ollama models
-│   └── setup_mac.sh      ← ติดตั้ง venv + สร้าง .app (macOS)
+├── scripts/
+│   ├── setup_mac.sh      ← macOS setup (auto-installs Homebrew/Python/Ollama)
+│   └── setup_ollama.py   ← ดาวน์โหลด Ollama models แยก
 │
-├── LineBot.app/           ← macOS app bundle (ดับเบิลคลิกเพื่อเปิด)
-├── start.bat             ← Windows quick-start
+├── LineBot.app/          ← macOS app bundle (ดับเบิลคลิกเพื่อเปิด)
 │
 ├── Dockerfile
 ├── docker-compose.yml
@@ -47,44 +87,15 @@ local ai/
 
 ---
 
-## เริ่มต้นใช้งาน
-
-### Windows
-
-1. ติดตั้ง [Python 3.10+](https://www.python.org/downloads/) และ [Ollama](https://ollama.com)
-2. ดาวน์โหลด models:
-   ```bat
-   python scripts\setup_ollama.py
-   ```
-3. คัดลอกและกรอก credentials:
-   ```bat
-   copy .env.example .env
-   ```
-4. ดับเบิลคลิก **`start.bat`** — เซิร์ฟเวอร์เริ่ม + Admin Panel เปิดอัตโนมัติ
-
-> หรือใช้ **`launcher.py`** สำหรับ GUI แบบ app (Wizard + Control Panel)
-
----
-
-### macOS
-
-1. ติดตั้ง [Python 3.10+](https://www.python.org/downloads/) และ [Ollama](https://ollama.com)
-2. รัน setup ครั้งเดียว:
-   ```bash
-   bash scripts/setup_mac.sh
-   ```
-3. ดับเบิลคลิก **`LineBot.app`** ทุกครั้งที่ต้องการเปิด
-
----
-
 ## Admin Panel
 
-เปิด [http://localhost:8000/admin](http://localhost:8000/admin) หลังรันเซิร์ฟเวอร์
+หลังกด Start ใน Control Panel แล้ว Admin Panel จะเปิดอัตโนมัติ  
+หรือเปิดที่ [http://localhost:8000/admin](http://localhost:8000/admin)
 
 | Tab | ทำอะไร |
 |-----|--------|
 | Dashboard | สถานะ Ollama, RAG, จำนวนข้อความ, เปิด/ปิด Bot |
-| Config | แก้ URL, model, chunk size โดยไม่ต้องรีสตาร์ท |
+| Config | แก้ URL, model, chunk size — Hot Reload ไม่ต้องรีสตาร์ท |
 | Knowledge | อัปโหลด / ลบ / ดูเอกสาร, rebuild RAG index |
 | Persona | แก้ system prompt, ข้อความต้อนรับ, Quick Reply topics |
 | Chat | ทดสอบ bot โดยตรงจาก browser |
@@ -94,8 +105,6 @@ local ai/
 ---
 
 ## Docker
-
-### ขั้นตอน
 
 ```bash
 # 1. สร้าง .env จาก template แล้วกรอก LINE credentials
@@ -112,21 +121,10 @@ docker exec ollama ollama pull nomic-embed-text
 open http://localhost:8000/admin
 ```
 
-### หมายเหตุ
-
-- `linebot` จะรอให้ Ollama healthy ก่อนจึงจะ start (healthcheck อัตโนมัติ)
-- `data/` mount เป็น writable — อัปโหลดเอกสารผ่าน Admin Panel ได้เลย
-- `logs/` mount ไว้ที่ host — ดู log ได้จากเครื่องตรงๆ
-
 ```bash
-# ดู logs
-docker-compose logs -f linebot
-
-# หยุด
-docker-compose down
-
-# Rebuild หลังแก้โค้ด
-docker-compose up -d --build
+docker-compose logs -f linebot   # ดู logs
+docker-compose down               # หยุด
+docker-compose up -d --build      # rebuild หลังแก้โค้ด
 ```
 
 ---
@@ -150,7 +148,7 @@ LINE User ──► LINE Platform ──► POST /webhook
                               └───────┬────────┘
                                       │ context chunks
                               ┌───────▼────────┐
-                              │  Ollama (LLM)  │  typhoon2 / llama3.2
+                              │  Ollama (LLM)  │  llama3.2 / typhoon2 / etc.
                               └───────┬────────┘
                                       │
                               ┌───────▼────────┐
