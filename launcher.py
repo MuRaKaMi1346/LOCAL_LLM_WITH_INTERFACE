@@ -95,7 +95,7 @@ def make_header(parent, title: str, subtitle: str = "") -> tk.Canvas:
         c.create_text(20, 26, text="🌸", font=("", 22), anchor="w")
         c.create_text(50, 22, text=title, fill="white", font=("", 15, "bold"), anchor="w")
         if subtitle:
-            c.create_text(50, 44, text=subtitle, fill="rgba(255,255,255,0.85)",
+            c.create_text(50, 44, text=subtitle, fill="#FFE8F8",
                           font=("", 11), anchor="w", tags="sub")
             c.itemconfig("sub", fill="#FFECF8")
 
