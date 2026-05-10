@@ -7,6 +7,7 @@ import tkinter as tk
 from tkinter import ttk
 
 PROJECT_DIR = Path(__file__).resolve().parent.parent
+_W32 = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 _VENV_PY  = PROJECT_DIR / ".venv" / "Scripts" / "python.exe"    # Windows
 _VENV_PYW = PROJECT_DIR / ".venv" / "Scripts" / "pythonw.exe"   # Windows no-console
 _VENV_MAC = PROJECT_DIR / ".venv" / "bin" / "python"             # macOS / Linux
@@ -237,6 +238,7 @@ class SetupApp(tk.Tk):
             r = subprocess.run(
                 [sys.executable, "-m", "venv", str(PROJECT_DIR / ".venv")],
                 capture_output=True, text=True, cwd=str(PROJECT_DIR),
+                creationflags=_W32,
             )
             self._log(r.stdout or "")
             if r.returncode != 0:
@@ -265,6 +267,7 @@ class SetupApp(tk.Tk):
                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                 text=True, encoding="utf-8", errors="replace",
                 cwd=str(PROJECT_DIR), bufsize=1,
+                creationflags=_W32,
             )
             for line in proc.stdout:
                 if self._cancelled:
@@ -320,6 +323,7 @@ class SetupApp(tk.Tk):
             subprocess.Popen(
                 [exe, str(PROJECT_DIR / "launcher" / "launcher.py")],
                 cwd=str(PROJECT_DIR),
+                creationflags=_W32,
             )
         except Exception as exc:
             self._set_status("❌", "เปิดแอพไม่สำเร็จ",
@@ -335,6 +339,7 @@ if __name__ == "__main__":
         subprocess.Popen(
             [_launch_exe(), str(PROJECT_DIR / "launcher" / "launcher.py")],
             cwd=str(PROJECT_DIR),
+            creationflags=_W32,
         )
     else:
         SetupApp().mainloop()

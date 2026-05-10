@@ -11,6 +11,7 @@ from typing import Generator
 PROJECT_DIR = Path(__file__).resolve().parent
 _VENV_PIP_WIN = PROJECT_DIR / ".venv" / "Scripts" / "pip.exe"
 _VENV_PIP_MAC = PROJECT_DIR / ".venv" / "bin" / "pip"
+_W32 = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
 
 # ── internal helpers ──────────────────────────────────────────────────────────
@@ -20,6 +21,7 @@ def _git(*args: str) -> subprocess.CompletedProcess:
         ["git"] + list(args),
         cwd=str(PROJECT_DIR),
         capture_output=True, text=True, encoding="utf-8", errors="replace",
+        creationflags=_W32,
     )
 
 
@@ -146,6 +148,7 @@ def apply_update() -> Generator[str, None, None]:
              "-q", "--no-warn-script-location"],
             cwd=str(PROJECT_DIR),
             capture_output=True, text=True,
+            creationflags=_W32,
         )
         if pip_proc.returncode == 0:
             yield "✓ Packages updated\n"

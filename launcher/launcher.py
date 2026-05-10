@@ -12,6 +12,7 @@ ENV_FILE     = PROJECT_DIR / ".env"
 ADMIN_URL    = "http://localhost:8000/admin"
 HEALTH_URL   = "http://localhost:8000/health"
 APP_VERSION  = "2.1.0"
+_W32 = subprocess.CREATE_NO_WINDOW if sys.platform == "win32" else 0
 
 # updater.py lives in project root — add to path so we can import it
 if str(PROJECT_DIR) not in sys.path:
@@ -464,6 +465,7 @@ class ControlTab(tk.Frame):
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             text=True, env=env, bufsize=1,
             start_new_session=(sys.platform != "win32"),
+            creationflags=_W32,
         )
         self._running = True
         threading.Thread(target=self._stream_logs, daemon=True).start()
@@ -541,13 +543,14 @@ class ControlTab(tk.Frame):
         token = env.get("NGROK_AUTH_TOKEN", "").strip()
         if token:
             subprocess.run(["ngrok", "config", "add-authtoken", token],
-                           capture_output=True)
+                           capture_output=True, creationflags=_W32)
         self.after(0, lambda: self._set_status(
             self._st_ngrok, "starting", "กำลังเชื่อมต่อ..."))
         try:
             self._ngrok_proc = subprocess.Popen(
                 ["ngrok", "http", "8000"],
                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                creationflags=_W32,
             )
             time.sleep(2)
             self.after(0, self._poll_ngrok_url)
@@ -974,7 +977,8 @@ class UpdateDialog(tk.Toplevel):
         env["PYTHONUTF8"] = "1"
         try:
             subprocess.Popen([sys.executable, launcher],
-                             cwd=str(PROJECT_DIR), env=env)
+                             cwd=str(PROJECT_DIR), env=env,
+                             creationflags=_W32)
         except Exception as exc:
             self._append(f"\n✗ Restart failed: {exc}\n")
             return
