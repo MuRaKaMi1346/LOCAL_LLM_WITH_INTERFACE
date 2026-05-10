@@ -241,6 +241,18 @@ class SetupApp(tk.Tk):
                 creationflags=_W32,
             )
             self._log(r.stdout or "")
+            # Homebrew/system Python may lack ensurepip — retry with --without-pip
+            if r.returncode != 0 and "ensurepip" in (r.stderr or ""):
+                self._log("[retry] --without-pip\n")
+                import shutil as _sh
+                _sh.rmtree(str(PROJECT_DIR / ".venv"), ignore_errors=True)
+                r = subprocess.run(
+                    [sys.executable, "-m", "venv", "--without-pip",
+                     str(PROJECT_DIR / ".venv")],
+                    capture_output=True, text=True, cwd=str(PROJECT_DIR),
+                    creationflags=_W32,
+                )
+                self._log(r.stdout or "")
             if r.returncode != 0:
                 self._log(f"\n[ERROR]\n{r.stderr}\n")
                 self._set_status(

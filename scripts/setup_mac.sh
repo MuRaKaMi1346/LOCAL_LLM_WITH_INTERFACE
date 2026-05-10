@@ -138,12 +138,27 @@ if [ -d "$VENV_DIR" ]; then
     info "Virtual environment already exists — skipping creation"
 else
     info "Creating virtual environment..."
-    "$PYTHON" -m venv "$VENV_DIR"
+    # Homebrew Python often ships without ensurepip → fall back to --without-pip
+    "$PYTHON" -m venv "$VENV_DIR" 2>/tmp/_venv_err || {
+        warn "ensurepip unavailable (Homebrew Python) — retrying with --without-pip"
+        rm -rf "$VENV_DIR"
+        "$PYTHON" -m venv --without-pip "$VENV_DIR"
+    }
+    rm -f /tmp/_venv_err
     success "Virtual environment created"
 fi
 
 VENV_PY="$VENV_DIR/bin/python"
 VENV_PIP="$VENV_DIR/bin/pip"
+
+# Bootstrap pip when ensurepip was unavailable
+if [ ! -f "$VENV_PIP" ]; then
+    info "Bootstrapping pip via get-pip.py..."
+    curl -sSL https://bootstrap.pypa.io/get-pip.py -o /tmp/_get_pip.py \
+        && "$VENV_PY" /tmp/_get_pip.py --quiet \
+        && rm -f /tmp/_get_pip.py
+    success "pip bootstrapped"
+fi
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 7. Dependencies
