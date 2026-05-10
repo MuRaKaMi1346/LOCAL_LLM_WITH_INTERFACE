@@ -13,6 +13,10 @@ ADMIN_URL    = "http://localhost:8000/admin"
 HEALTH_URL   = "http://localhost:8000/health"
 APP_VERSION  = "2.1.0"
 
+# updater.py lives in project root — add to path so we can import it
+if str(PROJECT_DIR) not in sys.path:
+    sys.path.insert(0, str(PROJECT_DIR))
+
 _venv_py_win = PROJECT_DIR / ".venv" / "Scripts" / "python.exe"
 _venv_py_mac = PROJECT_DIR / ".venv" / "bin" / "python"
 SERVER_PYTHON = str(
@@ -885,6 +889,104 @@ class SettingsTab(tk.Frame):
 
 
 # ═════════════════════════════════════════════════════════════════════════════
+# UPDATE DIALOG
+# ═════════════════════════════════════════════════════════════════════════════
+class UpdateDialog(tk.Toplevel):
+    """Modal window that streams apply_update() output and offers restart."""
+
+    def __init__(self, parent: tk.Widget):
+        super().__init__(parent)
+        self.title("อัปเดต LINE Bot")
+        self.resizable(True, True)
+        self.minsize(480, 320)
+        self.geometry("520x420")
+        self.configure(bg=C["BG"])
+        self.transient(parent)
+        self.grab_set()
+        self.after(10, self._center)
+        self._build()
+        self.after(200, lambda: threading.Thread(
+            target=self._worker, daemon=True).start())
+
+    def _center(self) -> None:
+        sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
+        w, h = 520, 420
+        self.geometry(f"{w}x{h}+{(sw - w) // 2}+{(sh - h) // 2}")
+
+    def _build(self) -> None:
+        make_header(self, "อัปเดต LINE Bot", "กำลังดาวน์โหลดการอัปเดต...", height=60)
+
+        log_frame = tk.Frame(self, bg=C["LOG_BG"])
+        log_frame.pack(fill="both", expand=True, padx=14, pady=(10, 0))
+        sb = ttk.Scrollbar(log_frame)
+        sb.pack(side="right", fill="y")
+        self._log_w = tk.Text(
+            log_frame, bg=C["LOG_BG"], fg=C["LOG_FG"],
+            font=("Menlo" if sys.platform == "darwin" else "Consolas", 10),
+            relief="flat", state="disabled", bd=0,
+            padx=8, pady=6, wrap="word", yscrollcommand=sb.set,
+        )
+        self._log_w.pack(side="left", fill="both", expand=True)
+        sb.config(command=self._log_w.yview)
+
+        btn_row = tk.Frame(self, bg=C["BG"])
+        btn_row.pack(fill="x", padx=14, pady=10)
+        self._btn_restart = tk.Button(
+            btn_row, text="🔄  Restart Now",
+            font=("", 12, "bold"), bg=C["GREEN"], fg="white",
+            relief="flat", padx=20, pady=8, cursor="hand2",
+            state="disabled",
+            activebackground="#009624", activeforeground="white",
+            command=self._restart,
+        )
+        self._btn_restart.pack(side="left")
+        tk.Button(
+            btn_row, text="✕  Close",
+            font=("", 11), bg=C["MUTED"], fg="white",
+            relief="flat", padx=16, pady=8, cursor="hand2",
+            command=self.destroy,
+        ).pack(side="right")
+
+    def _append(self, text: str) -> None:
+        def _u():
+            self._log_w.config(state="normal")
+            self._log_w.insert("end", text)
+            self._log_w.see("end")
+            self._log_w.config(state="disabled")
+        self.after(0, _u)
+
+    def _worker(self) -> None:
+        try:
+            from updater import apply_update
+        except ImportError as exc:
+            self._append(f"✗ Cannot import updater: {exc}\n")
+            return
+        try:
+            for line in apply_update():
+                self._append(line)
+            self.after(0, lambda: self._btn_restart.config(state="normal"))
+        except Exception as exc:
+            self._append(f"\n✗ Error: {exc}\n")
+
+    def _restart(self) -> None:
+        launcher = str(PROJECT_DIR / "launcher" / "launcher.py")
+        env = os.environ.copy()
+        env["PYTHONUTF8"] = "1"
+        try:
+            subprocess.Popen([sys.executable, launcher],
+                             cwd=str(PROJECT_DIR), env=env)
+        except Exception as exc:
+            self._append(f"\n✗ Restart failed: {exc}\n")
+            return
+        root = self.winfo_toplevel()
+        try:
+            root.destroy()
+        except Exception:
+            pass
+        sys.exit(0)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
 # SYSTEM TAB
 # ═════════════════════════════════════════════════════════════════════════════
 class SystemTab(tk.Frame):
@@ -892,6 +994,7 @@ class SystemTab(tk.Frame):
         super().__init__(master, bg=C["BG"])
         self._build()
         self.after(500, self._refresh)
+        self.after(2000, self._auto_check)
 
     def _build(self) -> None:
         import platform
@@ -943,6 +1046,94 @@ class SystemTab(tk.Frame):
                  font=("", 11, "bold"), bg=C["CARD"], fg=C["TEXT"]).pack(anchor="w")
         tk.Label(about, text="Powered by Ollama + FastAPI + LINE Messaging API",
                  font=("", 10), bg=C["CARD"], fg=C["MUTED"]).pack(anchor="w", pady=(2, 0))
+
+        # ── Updates ───────────────────────────────────────────────────────────
+        upd_card = tk.Frame(self, bg=C["CARD"], padx=16, pady=12,
+                            highlightthickness=1, highlightbackground=C["BORDER"])
+        upd_card.pack(fill="x", padx=14, pady=4)
+
+        upd_hdr = tk.Frame(upd_card, bg=C["CARD"])
+        upd_hdr.pack(fill="x")
+        tk.Label(upd_hdr, text="🔄  Updates", font=("", 11, "bold"),
+                 bg=C["CARD"], fg=C["TEXT"]).pack(side="left")
+        tk.Label(upd_hdr, text=f"v{APP_VERSION}", font=("", 10),
+                 bg=C["CARD"], fg=C["MUTED"]).pack(side="right")
+
+        self._lbl_update_status = tk.Label(
+            upd_card, text="กดปุ่มเพื่อตรวจสอบการอัปเดต",
+            font=("", 10), bg=C["CARD"], fg=C["MUTED"], anchor="w")
+        self._lbl_update_status.pack(fill="x", pady=(6, 6))
+
+        upd_btns = tk.Frame(upd_card, bg=C["CARD"])
+        upd_btns.pack(fill="x")
+
+        self._btn_check = tk.Button(
+            upd_btns, text="🔍  Check for Updates",
+            font=("", 11), bg=C["CARD"], fg=C["TEXT2"],
+            relief="flat", padx=12, pady=5, cursor="hand2",
+            highlightthickness=1, highlightbackground=C["BORDER"],
+            activebackground=C["PINK_LIGHT"],
+            command=self._check_updates,
+        )
+        self._btn_check.pack(side="left")
+
+        self._btn_update = tk.Button(
+            upd_btns, text="⬇  Update Now",
+            font=("", 11, "bold"), bg=C["GREEN"], fg="white",
+            relief="flat", padx=12, pady=5, cursor="hand2",
+            state="disabled",
+            activebackground="#009624", activeforeground="white",
+            command=self._do_update,
+        )
+        self._btn_update.pack(side="left", padx=(8, 0))
+
+    def _check_updates(self) -> None:
+        self._lbl_update_status.config(text="⏳ กำลังตรวจสอบ...", fg=C["ORANGE"])
+        self._btn_check.config(state="disabled")
+        self._btn_update.config(state="disabled")
+        threading.Thread(target=self._check_updates_bg, daemon=True).start()
+
+    def _check_updates_bg(self) -> None:
+        try:
+            from updater import check_for_updates
+            info = check_for_updates()
+        except ImportError as exc:
+            _msg = f"✗ updater module not found: {exc}"
+            def _err():
+                self._lbl_update_status.config(text=_msg, fg=C["RED"])
+                self._btn_check.config(state="normal")
+            self.after(0, _err)
+            return
+
+        def _upd():
+            self._btn_check.config(state="normal")
+            if not info.get("git_available"):
+                self._lbl_update_status.config(
+                    text="✗ ไม่พบ git — กรุณาติดตั้ง git ก่อน", fg=C["RED"])
+                return
+            if info.get("error"):
+                self._lbl_update_status.config(
+                    text=f"✗ {info['error']}", fg=C["RED"])
+                return
+            if info.get("available"):
+                n = info["commits_behind"]
+                self._lbl_update_status.config(
+                    text=f"✅ มีอัปเดต {n} commit{'s' if n != 1 else ''} — "
+                         f"{info['local']} → {info['remote']}",
+                    fg=C["GREEN"])
+                self._btn_update.config(state="normal")
+            else:
+                self._lbl_update_status.config(
+                    text=f"✓ เวอร์ชันล่าสุดแล้ว  ({info.get('local', '?')})",
+                    fg=C["GREEN"])
+
+        self.after(0, _upd)
+
+    def _auto_check(self) -> None:
+        threading.Thread(target=self._check_updates_bg, daemon=True).start()
+
+    def _do_update(self) -> None:
+        UpdateDialog(self.winfo_toplevel())
 
     def _refresh(self) -> None:
         import platform
