@@ -12,6 +12,9 @@ unset _EXPAT_LIB
 
 VENV_PY=".venv/bin/python"
 
+# ── git pull (auto-update code) ──────────────────────────────────────────────
+command -v git &>/dev/null && git pull --ff-only origin main 2>/dev/null || true
+
 # ── Ollama models (pull if missing — only runs once per model) ────────────────
 if command -v ollama &>/dev/null; then
     for _M in llama3.2 nomic-embed-text; do
