@@ -78,10 +78,8 @@ class RAGService:
 
         logger.info("Embedding %d chunks from %d files...", len(all_chunks), len(docs))
         all_embeddings: list[list[float]] = []
-        for i in range(0, len(all_chunks), 16):
-            batch = all_chunks[i: i + 16]
-            for text in batch:
-                all_embeddings.append(await ollama.embed(text))
+        for text in all_chunks:
+            all_embeddings.append(await ollama.embed(text))
 
         self.collection.add(documents=all_chunks, embeddings=all_embeddings, ids=all_ids)
         self._ready = True

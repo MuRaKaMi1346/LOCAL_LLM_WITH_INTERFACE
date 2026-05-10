@@ -30,6 +30,7 @@ class AppState:
     def reload_parser(self, secret: str):
         from linebot.v3 import WebhookParser
         self._parser = WebhookParser(secret)
+        self._parser_secret = secret
 
 
 app_state = AppState()

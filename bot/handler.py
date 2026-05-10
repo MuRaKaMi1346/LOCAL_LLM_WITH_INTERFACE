@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import re
 
@@ -83,8 +84,9 @@ async def handle_text_message(event: MessageEvent) -> None:
 
     # Show loading indicator
     try:
-        _line_api().show_loading_animation(
-            ShowLoadingAnimationRequest(chat_id=user_id, loading_seconds=60)
+        await asyncio.to_thread(
+            _line_api().show_loading_animation,
+            ShowLoadingAnimationRequest(chat_id=user_id, loading_seconds=60),
         )
     except Exception as exc:
         logger.warning("Loading indicator failed: %s", exc)
@@ -131,8 +133,9 @@ async def _reply(reply_token: str, text: str, quick_reply: QuickReply | None = N
     msg = TextMessage(text=text, quick_reply=quick_reply)
     api = _line_api()
     try:
-        api.reply_message(
-            ReplyMessageRequest(reply_token=reply_token, messages=[msg])
+        await asyncio.to_thread(
+            api.reply_message,
+            ReplyMessageRequest(reply_token=reply_token, messages=[msg]),
         )
     except Exception as exc:
         logger.error("LINE reply failed: %s", exc)

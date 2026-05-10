@@ -67,9 +67,6 @@ _DEFAULT_QUICK_TOPICS: list[tuple[str, str]] = [
     ("🎉 กิจกรรม", "กิจกรรมนักศึกษาและชมรม"),
 ]
 
-WELCOME_MESSAGE = _DEFAULT_WELCOME
-QUICK_TOPICS = _DEFAULT_QUICK_TOPICS
-
 RESET_KEYWORDS = {"รีเซ็ต", "เริ่มใหม่", "ล้างประวัติ", "reset", "clear", "/reset", "/clear"}
 HELP_KEYWORDS = {"ช่วยด้วย", "help", "/help", "เมนู", "menu"}
 

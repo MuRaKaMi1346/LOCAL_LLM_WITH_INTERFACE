@@ -1,8 +1,11 @@
 import json
+import logging
 from pathlib import Path
 
 from pydantic_settings import BaseSettings
 from pydantic import Field
+
+logger = logging.getLogger(__name__)
 
 _CONFIG_JSON = Path("config.json")
 
@@ -46,7 +49,7 @@ def _apply_config_json(s: Settings) -> Settings:
         if updates:
             return s.model_copy(update=updates)
     except Exception:
-        pass
+        logger.warning("config.json is invalid JSON — using defaults", exc_info=True)
     return s
 
 

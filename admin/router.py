@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 import re
@@ -16,7 +17,7 @@ from linebot.v3.messaging import (
 )
 from pydantic import BaseModel
 
-from bot.prompts import _SYSTEM_TEMPLATE, _DEFAULT_WELCOME, _DEFAULT_QUICK_TOPICS
+from bot.prompts import _SYSTEM_TEMPLATE, _build_default_welcome, _DEFAULT_QUICK_TOPICS
 from bot.sessions import conversation_manager
 from config import settings
 from services.ollama import ollama
@@ -318,7 +319,10 @@ async def broadcast(data: dict):
     config = Configuration(access_token=settings.line_channel_access_token)
     line_api = MessagingApi(ApiClient(config))
     try:
-        line_api.push_message(PushMessageRequest(to=user_id, messages=[TextMessage(text=message)]))
+        await asyncio.to_thread(
+            line_api.push_message,
+            PushMessageRequest(to=user_id, messages=[TextMessage(text=message)]),
+        )
         return {"ok": True}
     except Exception as e:
         raise HTTPException(500, str(e))
@@ -426,7 +430,7 @@ async def reset_prompt():
 async def get_welcome():
     if CUSTOM_WELCOME.exists():
         return {"message": CUSTOM_WELCOME.read_text(encoding="utf-8"), "custom": True}
-    return {"message": _DEFAULT_WELCOME, "custom": False}
+    return {"message": _build_default_welcome(), "custom": False}
 
 
 @router.post("/api/welcome")
