@@ -34,15 +34,24 @@ banner
 # ══════════════════════════════════════════════════════════════════════════════
 # 1. Homebrew
 # ══════════════════════════════════════════════════════════════════════════════
+# Always activate Homebrew PATH first (Apple Silicon: /opt/homebrew, Intel: /usr/local)
+# This ensures 'brew' is available even if the user's shell profile isn't set up yet.
+for _BREW_PREFIX in /opt/homebrew /usr/local; do
+    if [[ -f "${_BREW_PREFIX}/bin/brew" ]]; then
+        eval "$("${_BREW_PREFIX}/bin/brew" shellenv)"
+        break
+    fi
+done
+
 if ! command -v brew &>/dev/null; then
     info "Homebrew not found — installing..."
     /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-    # Activate brew for this session (Apple Silicon path first, then Intel)
-    if [[ -f /opt/homebrew/bin/brew ]]; then
-        eval "$(/opt/homebrew/bin/brew shellenv)"
-    elif [[ -f /usr/local/bin/brew ]]; then
-        eval "$(/usr/local/bin/brew shellenv)"
-    fi
+    for _BREW_PREFIX in /opt/homebrew /usr/local; do
+        if [[ -f "${_BREW_PREFIX}/bin/brew" ]]; then
+            eval "$("${_BREW_PREFIX}/bin/brew" shellenv)"
+            break
+        fi
+    done
     success "Homebrew installed"
 else
     success "Homebrew $(brew --version | head -1)"
