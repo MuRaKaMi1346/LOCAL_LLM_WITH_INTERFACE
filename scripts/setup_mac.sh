@@ -115,6 +115,30 @@ else
     success "Ollama service started"
 fi
 
+# ── Ollama models ─────────────────────────────────────────────────────────────
+info "Checking Ollama models (llama3.2 + nomic-embed-text)..."
+# Ensure the service is up (may not have been started if already installed)
+if ! curl -s http://localhost:11434/api/tags &>/dev/null; then
+    info "Starting Ollama service..."
+    brew services start ollama 2>/dev/null || true
+    sleep 4
+fi
+if curl -s http://localhost:11434/api/tags &>/dev/null; then
+    for _MODEL in llama3.2 nomic-embed-text; do
+        if ollama list 2>/dev/null | grep -q "^${_MODEL}"; then
+            success "Model ${_MODEL} already present"
+        else
+            info "Pulling ${_MODEL} (may take several minutes)..."
+            ollama pull "$_MODEL" \
+                && success "Model ${_MODEL} ready" \
+                || warn "Pull failed — run manually: ollama pull ${_MODEL}"
+        fi
+    done
+else
+    warn "Ollama not responding — skipping model pull"
+    warn "After Ollama starts, run:  ollama pull llama3.2 && ollama pull nomic-embed-text"
+fi
+
 # ══════════════════════════════════════════════════════════════════════════════
 # 5. ngrok (optional — for public webhook URL)
 # ══════════════════════════════════════════════════════════════════════════════
@@ -132,7 +156,21 @@ else
 fi
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 6. Virtual environment
+# 6. git  (required for auto-update)
+# ══════════════════════════════════════════════════════════════════════════════
+info "Checking git..."
+if command -v git &>/dev/null; then
+    success "git $(git --version | awk '{print $NF}')"
+else
+    info "git not found — installing via Xcode Command Line Tools / Homebrew..."
+    xcode-select --install 2>/dev/null || brew install git
+    command -v git &>/dev/null \
+        && success "git installed" \
+        || warn "git install may need a Terminal restart"
+fi
+
+# ══════════════════════════════════════════════════════════════════════════════
+# 7. Virtual environment
 # ══════════════════════════════════════════════════════════════════════════════
 if [ -d "$VENV_DIR" ]; then
     info "Virtual environment already exists — skipping creation"
@@ -161,7 +199,7 @@ if [ ! -f "$VENV_PIP" ]; then
 fi
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 7. Dependencies
+# 8. Dependencies
 # ══════════════════════════════════════════════════════════════════════════════
 info "Upgrading pip..."
 "$VENV_PY" -m pip install --upgrade pip --quiet
@@ -172,7 +210,7 @@ info "Installing Python dependencies (this may take a minute)..."
 success "All dependencies installed"
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 8. LineBot.app permissions
+# 9. LineBot.app permissions
 # ══════════════════════════════════════════════════════════════════════════════
 if [ -f "$APP_EXEC" ]; then
     chmod +x "$APP_EXEC"
@@ -183,13 +221,13 @@ else
 fi
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 9. Create directories
+# 10. Create directories
 # ══════════════════════════════════════════════════════════════════════════════
 mkdir -p "$PROJECT_DIR/data" "$PROJECT_DIR/logs"
 success "data/ and logs/ directories ready"
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 10. Copy to /Applications (optional)
+# 11. Copy to /Applications (optional)
 # ══════════════════════════════════════════════════════════════════════════════
 if [ -d "$APP_BUNDLE" ]; then
     echo ""
