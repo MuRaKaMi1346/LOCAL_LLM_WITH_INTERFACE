@@ -175,7 +175,7 @@ async def save_credentials(data: dict):
             ENV_FILE.write_text(text, encoding="utf-8")
         changed.append("NGROK_AUTH_TOKEN")
 
-    if "line_channel_secret" in [c.lower().replace("line_channel_", "") for c in changed]:
+    if "LINE_CHANNEL_SECRET" in changed:
         app_state.reload_parser(settings.line_channel_secret)
 
     return {"ok": True, "changed": changed}
@@ -225,7 +225,14 @@ async def get_config_defaults():
 
 @router.post("/api/config")
 async def update_config(data: ConfigPayload):
-    payload = {
+    # Read existing config to preserve credentials (LINE token/secret, etc.)
+    existing: dict = {}
+    if CONFIG_JSON.exists():
+        try:
+            existing = json.loads(CONFIG_JSON.read_text(encoding="utf-8"))
+        except Exception:
+            pass
+    existing.update({
         "faculty_name":      data.faculty_name,
         "university_name":   data.university_name,
         "ollama_base_url":   data.ollama_base_url,
@@ -235,11 +242,11 @@ async def update_config(data: ConfigPayload):
         "chunk_size":        data.chunk_size,
         "chunk_overlap":     data.chunk_overlap,
         "max_history_turns": data.max_history_turns,
-    }
+    })
     CONFIG_JSON.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
+        json.dumps(existing, ensure_ascii=False, indent=2), encoding="utf-8"
     )
-    for key, val in payload.items():
+    for key, val in data.model_dump().items():
         object.__setattr__(settings, key, val)
     ollama.base_url   = settings.ollama_base_url
     ollama.chat_model = settings.ollama_chat_model

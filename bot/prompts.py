@@ -33,9 +33,22 @@ _CONTEXT_INJECTION = """
 
 คำสั่ง: นำข้อมูลทั้งหมดด้านบนมาตอบให้ครบทุกรายการ ห้ามละเว้นรายการใดที่เกี่ยวข้องกับคำถาม"""
 
+def _build_default_welcome() -> str:
+    return (
+        f"สวัสดีครับ/ค่ะ 👋\n"
+        f"ผมคือผู้ช่วยของ{settings.faculty_name} {settings.university_name}\n\n"
+        "สามารถถามเกี่ยวกับ:\n"
+        "• หลักสูตรและสาขาวิชา\n"
+        "• การรับสมัคร TCAS\n"
+        "• ค่าเล่าเรียนและทุน\n"
+        "• กิจกรรมและชมรม\n"
+        "• ช่องทางติดต่อ\n\n"
+        "หรือพิมพ์ถามได้เลยครับ! 😊"
+    )
+
 _DEFAULT_WELCOME = (
-    f"สวัสดีครับ/ค่ะ 👋\n"
-    f"ผมคือผู้ช่วยของ{settings.faculty_name} {settings.university_name}\n\n"
+    "สวัสดีครับ/ค่ะ 👋\n"
+    "ผมคือผู้ช่วยของหน่วยงาน\n\n"
     "สามารถถามเกี่ยวกับ:\n"
     "• หลักสูตรและสาขาวิชา\n"
     "• การรับสมัคร TCAS\n"
@@ -79,7 +92,7 @@ def build_system_prompt(context: str | None = None) -> str:
 def get_welcome_message() -> str:
     if _CUSTOM_WELCOME_FILE.exists():
         return _CUSTOM_WELCOME_FILE.read_text(encoding="utf-8")
-    return _DEFAULT_WELCOME
+    return _build_default_welcome()
 
 
 def get_quick_topics() -> list[tuple[str, str]]:

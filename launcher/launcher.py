@@ -1,26 +1,18 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-import os
-import re
-import sys
-import shutil
-import signal
-import subprocess
-import threading
-import webbrowser
-import time
+import json, math, os, sys, shutil, signal, subprocess, threading, webbrowser, time, re
 from pathlib import Path
 import tkinter as tk
-from tkinter import ttk, messagebox, scrolledtext
+from tkinter import ttk, messagebox
 
-# ── Paths ─────────────────────────────────────────────────────────────────────
-PROJECT_DIR  = Path(__file__).resolve().parent.parent   # launcher/ → project root
+# ─── Paths ────────────────────────────────────────────────────────────────────
+PROJECT_DIR  = Path(__file__).resolve().parent.parent
 CONFIG_JSON  = PROJECT_DIR / "config.json"
 ENV_FILE     = PROJECT_DIR / ".env"
 ADMIN_URL    = "http://localhost:8000/admin"
 HEALTH_URL   = "http://localhost:8000/health"
+APP_VERSION  = "2.1.0"
 
-# Use venv's python.exe (not pythonw) so the server process has stdout/stderr
 _venv_py_win = PROJECT_DIR / ".venv" / "Scripts" / "python.exe"
 _venv_py_mac = PROJECT_DIR / ".venv" / "bin" / "python"
 SERVER_PYTHON = str(
@@ -28,34 +20,32 @@ SERVER_PYTHON = str(
     _venv_py_mac if _venv_py_mac.exists() else
     sys.executable
 )
-
 REQUIRED = ("line_channel_access_token", "line_channel_secret")
 
-# ── Palette ───────────────────────────────────────────────────────────────────
+# ─── Palette ──────────────────────────────────────────────────────────────────
 C = dict(
-    PINK="#FF6AD5", PINK2="#C774E8", PINK_LIGHT="#FFF0F8",
-    BG="#FFFFFF", CARD="#FFF5FB",
+    BG="#F6F0FF", CARD="#FFFFFF", CARD2="#FAF6FF",
+    LOG_BG="#0D0D1A", LOG_FG="#D0D0FF",
+    PINK="#D63AF9", PINK2="#B82EE0", PINK_LIGHT="#F3E6FF",
     GREEN="#00C853", RED="#FF1744", ORANGE="#FF9100",
-    TEXT="#1A1A2E", MUTED="#888899", BORDER="#F0D0EC",
-    WHITE="#FFFFFF",
+    YELLOW="#FFD740", CYAN="#00BCD4",
+    TEXT="#1A1A2E", TEXT2="#4A4A6A", MUTED="#9090B0",
+    WHITE="#FFFFFF", BORDER="#E0D0F5", BORDER2="#C4A8E4",
+    BTN_HOVER="#C030E8",
 )
 
 
-# ── Process killer (full tree) ────────────────────────────────────────────────
-
+# ─── Process helpers ──────────────────────────────────────────────────────────
 def _kill_proc(proc: subprocess.Popen | None) -> None:
     if proc is None:
         return
     try:
         if sys.platform == "win32":
-            subprocess.run(
-                ["taskkill", "/F", "/T", "/PID", str(proc.pid)],
-                capture_output=True, timeout=5,
-            )
+            subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)],
+                           capture_output=True, timeout=5)
         else:
             try:
-                pgid = os.getpgid(proc.pid)
-                os.killpg(pgid, signal.SIGTERM)
+                os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
             except ProcessLookupError:
                 pass
     except Exception:
@@ -65,20 +55,17 @@ def _kill_proc(proc: subprocess.Popen | None) -> None:
             pass
 
 
-# ── config.json helpers ───────────────────────────────────────────────────────
-
+# ─── Config helpers ───────────────────────────────────────────────────────────
 def read_config() -> dict:
     if not CONFIG_JSON.exists():
         return {}
     try:
-        import json
         return json.loads(CONFIG_JSON.read_text(encoding="utf-8"))
     except Exception:
         return {}
 
 
-def write_config(updates: dict):
-    import json
+def write_config(updates: dict) -> None:
     cfg = read_config()
     cfg.update(updates)
     CONFIG_JSON.write_text(json.dumps(cfg, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -87,7 +74,7 @@ def write_config(updates: dict):
 def read_env() -> dict:
     if not ENV_FILE.exists():
         return {}
-    out = {}
+    out: dict = {}
     for line in ENV_FILE.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
@@ -97,524 +84,391 @@ def read_env() -> dict:
     return out
 
 
-def env_is_complete() -> bool:
+def write_env_key(key: str, val: str) -> None:
+    text = ENV_FILE.read_text(encoding="utf-8") if ENV_FILE.exists() else ""
+    pat = rf"^{re.escape(key)}=.*$"
+    if re.search(pat, text, re.MULTILINE):
+        text = re.sub(pat, f"{key}={val}", text, flags=re.MULTILINE)
+    else:
+        text = text.rstrip("\n") + f"\n{key}={val}\n"
+    ENV_FILE.write_text(text, encoding="utf-8")
+
+
+def is_configured() -> bool:
     cfg = read_config()
     return all(cfg.get(k, "").strip() for k in REQUIRED)
 
 
-# ── Widget helpers ────────────────────────────────────────────────────────────
+# ─── Gradient header ──────────────────────────────────────────────────────────
+def make_header(parent: tk.Widget, title: str, subtitle: str = "",
+                height: int = 72) -> tk.Canvas:
+    cv = tk.Canvas(parent, height=height, highlightthickness=0, bd=0)
+    cv.pack(fill="x")
 
-def make_header(parent, title: str, subtitle: str = "") -> tk.Canvas:
-    c = tk.Canvas(parent, height=80, highlightthickness=0)
-    c.pack(fill="x")
-
-    def _draw(event=None):
-        c.delete("all")
-        w = c.winfo_width() or 500
-        # Gradient strips (fake)
-        steps = 80
-        for i in range(steps):
-            t = i / steps
-            r = int(0xFF + (0xC7 - 0xFF) * t)
-            g = int(0x6A + (0x74 - 0x6A) * t)
-            b = int(0xD5 + (0xE8 - 0xD5) * t)
-            col = f"#{r:02x}{g:02x}{b:02x}"
-            c.create_rectangle(0, i, w, i + 1, fill=col, outline="")
-        c.create_text(20, 26, text="🌸", font=("", 22), anchor="w")
-        c.create_text(50, 22, text=title, fill="white", font=("", 15, "bold"), anchor="w")
+    def _draw(e=None):
+        cv.delete("all")
+        w = cv.winfo_width() or 560
+        for i in range(height):
+            t = i / height
+            r = int(0xFF + (0x8B - 0xFF) * t)
+            g = int(0x6A + (0x20 - 0x6A) * t)
+            b = int(0xD5 + (0xE0 - 0xD5) * t)
+            cv.create_rectangle(0, i, w, i + 1, fill=f"#{r:02x}{g:02x}{b:02x}", outline="")
+        # Decorative blobs
+        cv.create_oval(w - 90, -35, w + 30, 85, fill="#FFFFFF15", outline="")
+        cv.create_oval(w - 35, 25, w + 65, 125, fill="#FFFFFF0D", outline="")
+        cv.create_oval(10, -20, 80, 50, fill="#FFFFFF10", outline="")
+        # Content
+        cv.create_text(18, height // 2 - 7, text="🌸", font=("", 20), anchor="w")
+        cv.create_text(52, height // 2 - (9 if subtitle else 0),
+                       text=title, fill="white", font=("", 15, "bold"), anchor="w")
         if subtitle:
-            c.create_text(50, 44, text=subtitle, fill="#FFE8F8",
-                          font=("", 11), anchor="w", tags="sub")
-            c.itemconfig("sub", fill="#FFECF8")
+            cv.create_text(54, height // 2 + 12, text=subtitle,
+                           fill="#FFE0FB", font=("", 10), anchor="w")
 
-    c.bind("<Configure>", _draw)
-    c.after(10, _draw)
-    return c
-
-
-def labeled_entry(parent, label: str, var: tk.StringVar, show="", hint="") -> ttk.Frame:
-    f = ttk.Frame(parent)
-    f.pack(fill="x", pady=5)
-    ttk.Label(f, text=label, font=("", 12, "bold")).pack(anchor="w")
-    e = ttk.Entry(f, textvariable=var, show=show, font=("", 12))
-    e.pack(fill="x", ipady=4, pady=(2, 0))
-    if hint:
-        ttk.Label(f, text=hint, font=("", 10), foreground=C["MUTED"]).pack(anchor="w", pady=(2, 0))
-    return f
+    cv.bind("<Configure>", _draw)
+    cv.after(10, _draw)
+    return cv
 
 
-# ═════════════════════════════════════════════════════════════════════════════
-# WIZARD
-# ═════════════════════════════════════════════════════════════════════════════
+# ─── Pulsing dot ─────────────────────────────────────────────────────────────
+class PulseDot(tk.Canvas):
+    _COLORS = {
+        "online":   ("#00C853", "#69F0AE"),
+        "starting": ("#FF9100", "#FFD740"),
+        "offline":  ("#9090B0", "#9090B0"),
+        "error":    ("#FF1744", "#FF6D00"),
+    }
 
-class SetupWizard(tk.Toplevel):
-    def __init__(self, master, on_done):
-        super().__init__(master)
-        self.on_done = on_done
-        self.title("LINE Bot — Setup")
-        self.resizable(False, False)
-        self._data = {}
-        self._pages = []
-        self._idx = 0
+    def __init__(self, parent: tk.Widget, size: int = 13, bg: str = C["CARD"], **kw):
+        super().__init__(parent, width=size, height=size,
+                         highlightthickness=0, bd=0, bg=bg, **kw)
+        self._size = size
+        self._state = "offline"
+        self._phase = 0.0
+        self._oval = self.create_oval(2, 2, size - 2, size - 2,
+                                      fill=C["MUTED"], outline="")
+        self._running = True
+        self._tick()
 
-        # Center window
-        self.geometry("520x540")
-        self.after(10, lambda: self._center(520, 540))
+    def set_state(self, state: str) -> None:
+        self._state = state
 
-        self._build()
-        self._show_page(0)
+    def destroy(self) -> None:
+        self._running = False
+        super().destroy()
 
-    def _center(self, w, h):
-        sw = self.winfo_screenwidth()
-        sh = self.winfo_screenheight()
-        self.geometry(f"{w}x{h}+{(sw-w)//2}+{(sh-h)//2}")
-
-    def _build(self):
-        cfg = read_config()
-
-        # Pages
-        self._container = tk.Frame(self, bg=C["BG"])
-        self._container.pack(fill="both", expand=True)
-
-        self._pages = [
-            WelcomePage(self._container, self),
-            LineCredPage(self._container, self, cfg),
-            BotIdentityPage(self._container, self, cfg),
-            OllamaPage(self._container, self, cfg),
-            ReviewPage(self._container, self),
-        ]
-
-        # Step dots
-        dots_f = tk.Frame(self, bg=C["BG"], pady=6)
-        dots_f.pack(fill="x")
-        self._dots = []
-        for i in range(len(self._pages)):
-            d = tk.Label(dots_f, text="●", font=("", 14), bg=C["BG"])
-            d.pack(side="left", padx=4)
-            self._dots.append(d)
-        # center dots
-        dots_f.pack_configure(padx=(520 - len(self._pages) * 24) // 2)
-
-        # Nav buttons
-        nav = tk.Frame(self, bg=C["BORDER"], pady=1)
-        nav.pack(fill="x", side="bottom")
-        nav_inner = tk.Frame(nav, bg=C["BG"])
-        nav_inner.pack(fill="x")
-        self._btn_back = tk.Button(nav_inner, text="◀ ย้อนกลับ", command=self._prev,
-                                   font=("", 12), bg=C["BG"], relief="flat", padx=16, pady=8)
-        self._btn_back.pack(side="left", padx=10, pady=8)
-        self._btn_next = tk.Button(nav_inner, text="ถัดไป ▶", command=self._next,
-                                   font=("", 12, "bold"), bg=C["PINK"], fg="white",
-                                   relief="flat", padx=20, pady=8, cursor="hand2",
-                                   activebackground=C["PINK2"], activeforeground="white")
-        self._btn_next.pack(side="right", padx=10, pady=8)
-
-    def _show_page(self, idx):
-        for p in self._pages:
-            p.pack_forget()
-        self._pages[idx].pack(fill="both", expand=True)
-        self._idx = idx
-        # Dots
-        for i, d in enumerate(self._dots):
-            d.config(foreground=C["PINK"] if i == idx else C["MUTED"])
-        # Nav labels
-        self._btn_back.config(state="normal" if idx > 0 else "disabled")
-        if idx == len(self._pages) - 1:
-            self._btn_next.config(text="✦ เริ่มใช้งาน!", bg=C["GREEN"])
-        else:
-            self._btn_next.config(text="ถัดไป ▶", bg=C["PINK"])
-
-    def _next(self):
-        page = self._pages[self._idx]
-        if hasattr(page, "validate") and not page.validate():
+    def _tick(self) -> None:
+        if not self._running:
             return
-        if hasattr(page, "collect"):
-            self._data.update(page.collect())
-        if self._idx < len(self._pages) - 1:
-            self._show_page(self._idx + 1)
+        colors = self._COLORS.get(self._state, self._COLORS["offline"])
+        if self._state in ("online", "starting"):
+            t = (1 + math.sin(self._phase)) / 2
+            def _lerp(h1: str, h2: str, t: float) -> str:
+                r = int(int(h1[1:3], 16) * (1 - t) + int(h2[1:3], 16) * t)
+                g = int(int(h1[3:5], 16) * (1 - t) + int(h2[3:5], 16) * t)
+                b = int(int(h1[5:7], 16) * (1 - t) + int(h2[5:7], 16) * t)
+                return f"#{r:02x}{g:02x}{b:02x}"
+            col = _lerp(colors[0], colors[1], t)
+            self._phase += 0.12
         else:
-            self._finish()
-
-    def _prev(self):
-        if self._idx > 0:
-            self._show_page(self._idx - 1)
-
-    def _finish(self):
-        write_config(self._data)
-        self.destroy()
-        self.on_done()
+            col = colors[0]
+            self._phase = 0.0
+        try:
+            self.itemconfig(self._oval, fill=col)
+        except Exception:
+            return
+        self.after(60, self._tick)
 
 
-# ── Wizard Pages ──────────────────────────────────────────────────────────────
+# ─── Labelled entry with show/hide ────────────────────────────────────────────
+class SecretEntry(tk.Frame):
+    def __init__(self, parent: tk.Widget, label: str, var: tk.StringVar,
+                 secret: bool = True, hint: str = "", bg: str = C["CARD"]):
+        super().__init__(parent, bg=bg)
+        self.pack(fill="x", pady=4)
+        self._secret = secret
+        self._shown = not secret
 
-class WelcomePage(tk.Frame):
-    def __init__(self, parent, wizard):
-        super().__init__(parent, bg=C["BG"])
-        make_header(self, "ยินดีต้อนรับสู่ LINE Bot", "ตั้งค่าครั้งแรก — ใช้เวลาแค่ 2 นาที")
-        body = tk.Frame(self, bg=C["BG"], padx=28, pady=16)
-        body.pack(fill="both", expand=True)
-        tk.Label(body, text="สิ่งที่ต้องเตรียม:", font=("", 13, "bold"), bg=C["BG"],
-                 fg=C["TEXT"]).pack(anchor="w", pady=(0, 10))
-        items = [
-            ("🔑", "LINE Channel Access Token + Secret", "จาก LINE Developers Console"),
-            ("🏫", "ชื่อคณะ / มหาวิทยาลัย", "สำหรับบุคลิกของบอท"),
-            ("🦙", "Ollama รันอยู่", "สำหรับ AI model (llama3.2 แนะนำ)"),
-        ]
-        for icon, title, sub in items:
-            row = tk.Frame(body, bg=C["CARD"], pady=10, padx=14, relief="flat")
-            row.pack(fill="x", pady=4)
-            tk.Label(row, text=icon, font=("", 20), bg=C["CARD"]).pack(side="left", padx=(0, 12))
-            info = tk.Frame(row, bg=C["CARD"])
-            info.pack(side="left", fill="x", expand=True)
-            tk.Label(info, text=title, font=("", 12, "bold"), bg=C["CARD"], fg=C["TEXT"],
-                     anchor="w").pack(fill="x")
-            tk.Label(info, text=sub, font=("", 10), bg=C["CARD"], fg=C["MUTED"],
-                     anchor="w").pack(fill="x")
+        tk.Label(self, text=label, font=("", 11, "bold"),
+                 bg=bg, fg=C["TEXT"]).pack(anchor="w")
 
+        row = tk.Frame(self, bg=bg)
+        row.pack(fill="x", pady=(2, 0))
 
-class LineCredPage(tk.Frame):
-    def __init__(self, parent, wizard, cfg: dict):
-        super().__init__(parent, bg=C["BG"])
-        make_header(self, "LINE Credentials 🔑", "ขั้นตอน 1/3")
-        body = tk.Frame(self, bg=C["BG"], padx=28, pady=16)
-        body.pack(fill="both", expand=True)
+        self._entry = tk.Entry(row, textvariable=var,
+                               font=("Menlo" if sys.platform == "darwin" else "Consolas", 11),
+                               show="•" if secret else "", relief="flat",
+                               bg=C["CARD2"], fg=C["TEXT"],
+                               insertbackground=C["PINK"],
+                               highlightthickness=1,
+                               highlightbackground=C["BORDER"],
+                               highlightcolor=C["PINK"])
+        self._entry.pack(side="left", fill="x", expand=True, ipady=5)
 
-        info = tk.Label(body,
-            text="หาได้ที่ developers.line.biz → เลือก Channel → Messaging API",
-            font=("", 10), bg=C["BG"], fg=C["MUTED"], wraplength=440, justify="left")
-        info.pack(anchor="w", pady=(0, 14))
+        if secret:
+            self._btn = tk.Button(row, text="👁", font=("", 11),
+                                  command=self._toggle,
+                                  bg=C["CARD2"], fg=C["MUTED"],
+                                  relief="flat", padx=6, cursor="hand2",
+                                  bd=0, highlightthickness=0)
+            self._btn.pack(side="left", padx=(2, 0))
 
-        def open_line(_=None):
-            webbrowser.open("https://developers.line.biz/console/")
-        link = tk.Label(body, text="🌐 เปิด LINE Developers Console", font=("", 10, "underline"),
-                        fg=C["PINK"], bg=C["BG"], cursor="hand2")
-        link.bind("<Button-1>", open_line)
-        link.pack(anchor="w", pady=(0, 12))
+        if hint:
+            tk.Label(self, text=hint, font=("", 9), bg=bg,
+                     fg=C["MUTED"]).pack(anchor="w", pady=(2, 0))
 
-        self.token_var = tk.StringVar(value=cfg.get("line_channel_access_token", ""))
-        self.secret_var = tk.StringVar(value=cfg.get("line_channel_secret", ""))
-
-        labeled_entry(body, "Channel Access Token *", self.token_var,
-                      hint="ยาวมาก (ขึ้นต้นด้วย eyJ...)")
-        labeled_entry(body, "Channel Secret *", self.secret_var, show="•",
-                      hint="สั้นกว่า — ดูในแท็บ Basic settings")
-
-    def validate(self):
-        if not self.token_var.get().strip():
-            messagebox.showerror("กรุณาใส่", "Channel Access Token ห้ามว่าง", parent=self.winfo_toplevel())
-            return False
-        if not self.secret_var.get().strip():
-            messagebox.showerror("กรุณาใส่", "Channel Secret ห้ามว่าง", parent=self.winfo_toplevel())
-            return False
-        return True
-
-    def collect(self):
-        return {
-            "line_channel_access_token": self.token_var.get().strip(),
-            "line_channel_secret": self.secret_var.get().strip(),
-        }
-
-
-class BotIdentityPage(tk.Frame):
-    def __init__(self, parent, wizard, cfg: dict):
-        super().__init__(parent, bg=C["BG"])
-        make_header(self, "ตัวตนของบอท 🤖", "ขั้นตอน 2/3")
-        body = tk.Frame(self, bg=C["BG"], padx=28, pady=16)
-        body.pack(fill="both", expand=True)
-
-        tk.Label(body, text="บอทจะแนะนำตัวเองตามข้อมูลนี้ใน LINE",
-                 font=("", 10), bg=C["BG"], fg=C["MUTED"]).pack(anchor="w", pady=(0, 14))
-
-        self.faculty_var = tk.StringVar(value=cfg.get("faculty_name", ""))
-        self.uni_var = tk.StringVar(value=cfg.get("university_name", "มหาวิทยาลัยตัวอย่าง"))
-
-        labeled_entry(body, "ชื่อคณะ / หน่วยงาน", self.faculty_var,
-                      hint="เช่น คณะวิทยาศาสตร์, งานทะเบียน, สำนักงานอธิการบดี")
-        labeled_entry(body, "ชื่อมหาวิทยาลัย / องค์กร", self.uni_var)
-
-        # Preview box
-        prev_f = tk.Frame(body, bg=C["CARD"], padx=14, pady=12, relief="flat")
-        prev_f.pack(fill="x", pady=(20, 0))
-        tk.Label(prev_f, text="ตัวอย่างข้อความต้อนรับ:", font=("", 10, "bold"),
-                 bg=C["CARD"], fg=C["MUTED"]).pack(anchor="w")
-        self._prev_label = tk.Label(prev_f, text="", font=("", 11),
-                                    bg=C["CARD"], fg=C["TEXT"], wraplength=400, justify="left")
-        self._prev_label.pack(anchor="w", pady=(4, 0))
-
-        def _update(*_):
-            self._prev_label.config(
-                text=f"สวัสดีครับ/ค่ะ 👋\nผมคือผู้ช่วยของ{self.faculty_var.get()} {self.uni_var.get()}"
-            )
-        self.faculty_var.trace_add("write", _update)
-        self.uni_var.trace_add("write", _update)
-        _update()
-
-    def collect(self):
-        return {
-            "faculty_name": self.faculty_var.get().strip() or "หน่วยงานของคุณ",
-            "university_name": self.uni_var.get().strip() or "มหาวิทยาลัยตัวอย่าง",
-        }
-
-
-class OllamaPage(tk.Frame):
-    def __init__(self, parent, wizard, cfg: dict):
-        super().__init__(parent, bg=C["BG"])
-        make_header(self, "Ollama Settings 🦙", "ขั้นตอน 3/3")
-        body = tk.Frame(self, bg=C["BG"], padx=28, pady=16)
-        body.pack(fill="both", expand=True)
-
-        def open_ollama(_=None):
-            webbrowser.open("https://ollama.com/download")
-        link = tk.Label(body, text="🌐 ดาวน์โหลด Ollama (ถ้ายังไม่มี)",
-                        font=("", 10, "underline"), fg=C["PINK"], bg=C["BG"], cursor="hand2")
-        link.bind("<Button-1>", open_ollama)
-        link.pack(anchor="w", pady=(0, 10))
-
-        self.url_var = tk.StringVar(value=cfg.get("ollama_base_url", "http://localhost:11434"))
-        self.chat_var = tk.StringVar(value=cfg.get("ollama_chat_model", "llama3.2"))
-        self.embed_var = tk.StringVar(value=cfg.get("ollama_embed_model", "nomic-embed-text"))
-
-        labeled_entry(body, "Ollama URL", self.url_var)
-        labeled_entry(body, "Chat Model", self.chat_var,
-                      hint="แนะนำ: llama3.2, typhoon2-8b-instruct (ภาษาไทยดีกว่า)")
-        labeled_entry(body, "Embed Model", self.embed_var,
-                      hint="แนะนำ: nomic-embed-text")
-
-        # Status row
-        status_f = tk.Frame(body, bg=C["BG"])
-        status_f.pack(fill="x", pady=(14, 0))
-        self._status = tk.Label(status_f, text="", font=("", 11), bg=C["BG"])
-        self._status.pack(side="left")
-        tk.Button(status_f, text="ทดสอบเชื่อมต่อ", command=self._check,
-                  font=("", 11), bg=C["PINK"], fg="white", relief="flat",
-                  padx=12, pady=4, cursor="hand2").pack(side="right")
-
-    def _check(self):
-        self._status.config(text="⏳ กำลังตรวจสอบ...", fg=C["ORANGE"])
-        self.after(10, self._do_check)
-
-    def _do_check(self):
-        def _run():
-            try:
-                import httpx
-                r = httpx.get(self.url_var.get().rstrip("/") + "/api/tags", timeout=4)
-                models = [m["name"] for m in r.json().get("models", [])]
-                msg = f"✓ เชื่อมต่อได้! พบ {len(models)} models"
-                self.after(0, lambda: self._status.config(text=msg, fg=C["GREEN"]))
-            except Exception:
-                msg = "✗ ไม่สามารถเชื่อมต่อ — ตรวจสอบว่า Ollama รันอยู่"
-                self.after(0, lambda: self._status.config(text=msg, fg=C["RED"]))
-        threading.Thread(target=_run, daemon=True).start()
-
-    def collect(self):
-        return {
-            "ollama_base_url": self.url_var.get().strip(),
-            "ollama_chat_model": self.chat_var.get().strip(),
-            "ollama_embed_model": self.embed_var.get().strip(),
-        }
-
-
-class ReviewPage(tk.Frame):
-    def __init__(self, parent, wizard):
-        super().__init__(parent, bg=C["BG"])
-        self.wizard = wizard
-        make_header(self, "พร้อมแล้ว! 🎉", "ตรวจสอบการตั้งค่า")
-        body = tk.Frame(self, bg=C["BG"], padx=28, pady=16)
-        body.pack(fill="both", expand=True)
-
-        tk.Label(body, text="สรุปการตั้งค่า:", font=("", 13, "bold"),
-                 bg=C["BG"], fg=C["TEXT"]).pack(anchor="w", pady=(0, 8))
-
-        self._summary = tk.Text(body, height=8, font=("Menlo", 11), bg=C["CARD"],
-                                fg=C["TEXT"], relief="flat", wrap="word",
-                                state="disabled", bd=0, padx=10, pady=8)
-        self._summary.pack(fill="x")
-
-        tk.Label(body, text="หลังจากนี้ตั้งค่าเพิ่มเติมได้ที่ Admin Panel ✦",
-                 font=("", 10), bg=C["BG"], fg=C["MUTED"]).pack(anchor="w", pady=(12, 0))
-
-    def tkraise(self, *args, **kwargs):
-        super().tkraise(*args, **kwargs)
-        self._refresh()
-
-    def pack(self, **kwargs):
-        self._refresh()
-        super().pack(**kwargs)
-
-    def _refresh(self):
-        d = self.wizard._data
-        token = d.get('line_channel_access_token', '')
-        lines = [
-            f"✓ LINE Token   : {token[:16]}..." if token else "✗ LINE Token   : (ยังไม่ได้ใส่)",
-            f"✓ LINE Secret  : {'•'*8}",
-            f"✓ คณะ          : {d.get('faculty_name','')}",
-            f"✓ มหาวิทยาลัย  : {d.get('university_name','')}",
-            f"✓ Ollama URL   : {d.get('ollama_base_url','')}",
-            f"✓ Chat Model   : {d.get('ollama_chat_model','')}",
-        ]
-        self._summary.config(state="normal")
-        self._summary.delete("1.0", "end")
-        self._summary.insert("end", "\n".join(lines))
-        self._summary.config(state="disabled")
+    def _toggle(self) -> None:
+        self._shown = not self._shown
+        self._entry.config(show="" if self._shown else "•")
 
 
 # ═════════════════════════════════════════════════════════════════════════════
-# CONTROL PANEL
+# CONTROL TAB
 # ═════════════════════════════════════════════════════════════════════════════
-
-class ControlPanel(tk.Frame):
-    def __init__(self, master: tk.Tk):
+class ControlTab(tk.Frame):
+    def __init__(self, master: tk.Widget, app: "App"):
         super().__init__(master, bg=C["BG"])
-        self.pack(fill="both", expand=True)
+        self._app = app
         self._proc: subprocess.Popen | None = None
         self._ngrok_proc: subprocess.Popen | None = None
         self._running = False
         self._ngrok_url = ""
         self._opened_admin = False
+        self._msg_count = 0
 
-        make_header(self, "LINE Bot", "Control Panel")
+        self._build()
 
-        # Status area
-        status_outer = tk.Frame(self, bg=C["CARD"], padx=18, pady=12)
-        status_outer.pack(fill="x", padx=16, pady=(12, 4))
-        self._st_server = self._stat_row(status_outer, "Server")
-        self._st_ollama = self._stat_row(status_outer, "Ollama")
-        self._st_rag    = self._stat_row(status_outer, "RAG Index")
-        self._st_ngrok  = self._stat_row(status_outer, "ngrok")
+    def _build(self) -> None:
+        # ── Warning banner (shown when unconfigured) ──────────────────────────
+        self._banner = tk.Frame(self, bg="#FFF3CD", pady=6)
+        tk.Label(self._banner,
+                 text="⚠  ยังไม่ได้ตั้งค่า LINE Credentials — ไปที่แท็บ Settings ก่อน",
+                 font=("", 10, "bold"), bg="#FFF3CD", fg="#856404").pack(side="left", padx=14)
+        tk.Button(self._banner, text="ไปที่ Settings →",
+                  font=("", 10), bg="#856404", fg="white",
+                  relief="flat", padx=10, pady=2, cursor="hand2",
+                  command=lambda: self._app.show_tab(1)).pack(side="right", padx=10)
+        if not is_configured():
+            self._banner.pack(fill="x")
 
-        # ngrok URL bar
-        url_f = tk.Frame(self, bg=C["CARD"], padx=18, pady=8)
-        url_f.pack(fill="x", padx=16, pady=(0, 6))
-        tk.Label(url_f, text="Webhook URL:", font=("", 10, "bold"),
-                 bg=C["CARD"], fg=C["MUTED"], width=13, anchor="w").pack(side="left")
-        self._url_label = tk.Label(url_f, text="— รอ ngrok —",
-                                   font=("Menlo", 10), bg=C["CARD"], fg=C["MUTED"],
+        # ── Status cards ──────────────────────────────────────────────────────
+        card = tk.Frame(self, bg=C["CARD"], padx=16, pady=12,
+                        relief="flat", bd=1,
+                        highlightthickness=1, highlightbackground=C["BORDER"])
+        card.pack(fill="x", padx=14, pady=(10, 4))
+
+        self._st_server = self._stat_row(card, "Server")
+        self._st_ollama = self._stat_row(card, "Ollama")
+        self._st_rag    = self._stat_row(card, "RAG Index")
+        self._st_ngrok  = self._stat_row(card, "ngrok")
+
+        _ngrok_ok = bool(shutil.which("ngrok"))
+        self._set_status(self._st_server, "offline", "ยังไม่ได้เริ่ม")
+        self._set_status(self._st_ollama, "offline", "รอ...")
+        self._set_status(self._st_rag,    "offline", "รอ...")
+        self._set_status(self._st_ngrok,
+                         "offline" if _ngrok_ok else "error",
+                         "รอ..." if _ngrok_ok else "ไม่ได้ติดตั้ง ngrok")
+
+        # ── Webhook URL bar ───────────────────────────────────────────────────
+        url_card = tk.Frame(self, bg=C["CARD"], padx=16, pady=8,
+                            highlightthickness=1, highlightbackground=C["BORDER"])
+        url_card.pack(fill="x", padx=14, pady=(0, 4))
+
+        tk.Label(url_card, text="Webhook URL", font=("", 9, "bold"),
+                 bg=C["CARD"], fg=C["MUTED"]).pack(anchor="w")
+
+        url_row = tk.Frame(url_card, bg=C["CARD"])
+        url_row.pack(fill="x", pady=(2, 0))
+
+        self._url_label = tk.Label(url_row, text="— รอ ngrok เริ่มทำงาน —",
+                                   font=("Menlo" if sys.platform == "darwin" else "Consolas", 10),
+                                   bg=C["CARD"], fg=C["MUTED"],
                                    anchor="w", cursor="hand2")
         self._url_label.pack(side="left", fill="x", expand=True)
-        self._btn_copy = tk.Button(url_f, text="Copy", font=("", 10),
+        self._url_label.bind("<Button-1>", lambda e: self._open_webhook_url())
+
+        self._btn_copy = tk.Button(url_row, text="📋 Copy",
                                    command=self._copy_url,
-                                   bg=C["PINK"], fg="white", relief="flat",
-                                   padx=10, pady=4, cursor="hand2", state="disabled",
-                                   activebackground=C["PINK2"], activeforeground="white")
+                                   font=("", 10), bg=C["PINK"], fg="white",
+                                   relief="flat", padx=10, pady=3,
+                                   cursor="hand2", state="disabled",
+                                   activebackground=C["PINK2"],
+                                   activeforeground="white")
         self._btn_copy.pack(side="right")
 
-        # Main buttons
+        self._btn_line_console = tk.Button(url_row, text="LINE Console ↗",
+                                           command=lambda: webbrowser.open(
+                                               "https://developers.line.biz/console/"),
+                                           font=("", 10), bg=C["CARD"],
+                                           fg=C["MUTED"], relief="flat",
+                                           padx=8, pady=3, cursor="hand2")
+        self._btn_line_console.pack(side="right", padx=(0, 4))
+
+        # ── Action buttons ────────────────────────────────────────────────────
         btn_f = tk.Frame(self, bg=C["BG"])
-        btn_f.pack(fill="x", padx=16, pady=4)
+        btn_f.pack(fill="x", padx=14, pady=4)
 
-        self._btn_start = tk.Button(btn_f, text="▶  Start",
-                                    command=self.start, font=("", 13, "bold"),
-                                    bg=C["GREEN"], fg="white", relief="flat",
-                                    padx=22, pady=10, cursor="hand2",
-                                    activebackground="#009624", activeforeground="white")
-        self._btn_start.pack(side="left", padx=(0, 8))
+        self._btn_start = tk.Button(
+            btn_f, text="▶  Start", command=self.start,
+            font=("", 13, "bold"), bg=C["GREEN"], fg="white",
+            relief="flat", padx=24, pady=10, cursor="hand2",
+            activebackground="#009624", activeforeground="white")
+        self._btn_start.pack(side="left", padx=(0, 6))
 
-        self._btn_stop = tk.Button(btn_f, text="■  Stop",
-                                   command=self.stop, font=("", 13, "bold"),
-                                   bg=C["MUTED"], fg="white", relief="flat",
-                                   padx=22, pady=10, cursor="hand2", state="disabled")
-        self._btn_stop.pack(side="left", padx=(0, 8))
+        self._btn_stop = tk.Button(
+            btn_f, text="■  Stop", command=self.stop,
+            font=("", 13, "bold"), bg=C["MUTED"], fg="white",
+            relief="flat", padx=24, pady=10, cursor="hand2", state="disabled")
+        self._btn_stop.pack(side="left", padx=(0, 6))
 
-        # Log area
-        log_f = tk.Frame(self, bg=C["BG"])
-        log_f.pack(fill="both", expand=True, padx=16, pady=(8, 0))
-        tk.Label(log_f, text="Server Logs", font=("", 11, "bold"),
-                 bg=C["BG"], fg=C["MUTED"]).pack(anchor="w")
-        sb = ttk.Scrollbar(log_f)
-        sb.pack(side="right", fill="y", pady=(4, 0))
-        self._log = tk.Text(log_f, bg="#1A1A2E", fg="#E0E0FF",
-                            font=("Menlo", 10), relief="flat",
-                            wrap="word", state="disabled", bd=0,
-                            yscrollcommand=sb.set)
-        self._log.pack(side="left", fill="both", expand=True, pady=(4, 0))
+        self._btn_admin = tk.Button(
+            btn_f, text="🌐  Admin Panel", command=self._open_admin,
+            font=("", 12), bg=C["CYAN"], fg="white",
+            relief="flat", padx=16, pady=10, cursor="hand2",
+            activebackground="#0097A7", activeforeground="white")
+        self._btn_admin.pack(side="left")
+
+        # ── Log area ──────────────────────────────────────────────────────────
+        log_header = tk.Frame(self, bg=C["BG"])
+        log_header.pack(fill="x", padx=14, pady=(6, 2))
+        tk.Label(log_header, text="Server Logs", font=("", 11, "bold"),
+                 bg=C["BG"], fg=C["TEXT2"]).pack(side="left")
+
+        tk.Button(log_header, text="Clear", font=("", 9),
+                  command=self._clear_log,
+                  bg=C["BG"], fg=C["MUTED"], relief="flat",
+                  cursor="hand2").pack(side="right")
+        tk.Button(log_header, text="↓ Bottom", font=("", 9),
+                  command=lambda: self._log.see("end"),
+                  bg=C["BG"], fg=C["MUTED"], relief="flat",
+                  cursor="hand2").pack(side="right", padx=4)
+
+        log_frame = tk.Frame(self, bg=C["LOG_BG"])
+        log_frame.pack(fill="both", expand=True, padx=14, pady=(0, 0))
+
+        sb = ttk.Scrollbar(log_frame)
+        sb.pack(side="right", fill="y")
+
+        self._log = tk.Text(
+            log_frame, bg=C["LOG_BG"], fg=C["LOG_FG"],
+            font=("Menlo" if sys.platform == "darwin" else "Consolas", 10),
+            relief="flat", wrap="word", state="disabled",
+            bd=0, padx=8, pady=6, yscrollcommand=sb.set,
+            selectbackground=C["PINK2"], selectforeground="white",
+        )
+        self._log.pack(side="left", fill="both", expand=True)
         sb.config(command=self._log.yview)
-        self._log.config(yscrollcommand=sb.set)
-        # Color tags
-        self._log.tag_config("ERROR", foreground="#FF6B6B")
+
+        self._log.tag_config("ERROR",   foreground="#FF6B6B", font=("Menlo" if sys.platform == "darwin" else "Consolas", 10, "bold"))
         self._log.tag_config("WARNING", foreground="#FFD700")
-        self._log.tag_config("INFO", foreground="#A0E0FF")
-        self._log.tag_config("OK", foreground="#00FF94")
-        self._log.tag_config("DIM", foreground="#666688")
+        self._log.tag_config("OK",      foreground="#69F0AE", font=("Menlo" if sys.platform == "darwin" else "Consolas", 10, "bold"))
+        self._log.tag_config("INFO",    foreground="#90CAF9")
+        self._log.tag_config("DIM",     foreground="#5555AA")
+        self._log.tag_config("TS",      foreground="#4444AA")
 
-        # Bottom bar
-        bot_f = tk.Frame(self, bg=C["CARD"], pady=6)
-        bot_f.pack(fill="x")
-        tk.Button(bot_f, text="⚙ ตั้งค่าใหม่", command=self._open_settings,
-                  font=("", 10), bg=C["CARD"], relief="flat",
-                  fg=C["MUTED"], cursor="hand2").pack(side="left", padx=12)
-        tk.Button(bot_f, text="🌐 Admin", command=self.open_admin,
-                  font=("", 10), bg=C["CARD"], relief="flat",
-                  fg=C["PINK"], cursor="hand2").pack(side="left", padx=4)
-        tk.Label(bot_f, text="LINE Bot + Ollama + RAG", font=("", 10),
-                 bg=C["CARD"], fg=C["MUTED"]).pack(side="right", padx=12)
+        # ── Stats bar ─────────────────────────────────────────────────────────
+        bar = tk.Frame(self, bg=C["BORDER"], height=1)
+        bar.pack(fill="x", padx=0)
 
-        _ngrok_installed = bool(shutil.which("ngrok"))
-        self._set_status(self._st_server, "●", C["MUTED"], "ยังไม่ได้เริ่ม")
-        self._set_status(self._st_ollama, "●", C["MUTED"], "รอ...")
-        self._set_status(self._st_rag,    "●", C["MUTED"], "รอ...")
-        self._set_status(self._st_ngrok,  "●",
-                         C["MUTED"] if _ngrok_installed else C["RED"],
-                         "รอ..." if _ngrok_installed else "ไม่ได้ติดตั้ง ngrok")
+        stats = tk.Frame(self, bg=C["CARD"], pady=5)
+        stats.pack(fill="x")
 
-    def _stat_row(self, parent, label: str) -> tk.Label:
+        self._lbl_uptime = tk.Label(stats, text="Uptime: —", font=("", 10),
+                                     bg=C["CARD"], fg=C["MUTED"])
+        self._lbl_uptime.pack(side="left", padx=12)
+
+        self._lbl_msgs = tk.Label(stats, text="Messages: 0", font=("", 10),
+                                   bg=C["CARD"], fg=C["MUTED"])
+        self._lbl_msgs.pack(side="left", padx=4)
+
+        tk.Label(stats, text=f"v{APP_VERSION}", font=("", 10),
+                 bg=C["CARD"], fg=C["BORDER2"]).pack(side="right", padx=12)
+
+        self.after(1000, self._tick_stats)
+
+    # ── Status helpers ────────────────────────────────────────────────────────
+    def _stat_row(self, parent: tk.Widget, label: str) -> tuple:
         f = tk.Frame(parent, bg=C["CARD"])
-        f.pack(fill="x", pady=2)
+        f.pack(fill="x", pady=3)
+
+        dot = PulseDot(f, size=12, bg=C["CARD"])
+        dot.pack(side="left", padx=(0, 8))
+
         tk.Label(f, text=f"{label}:", font=("", 11), bg=C["CARD"],
-                 fg=C["TEXT"], width=12, anchor="w").pack(side="left")
-        val = tk.Label(f, text="", font=("", 11, "bold"), bg=C["CARD"])
-        val.pack(side="left")
-        return val
+                 fg=C["TEXT2"], width=11, anchor="w").pack(side="left")
 
-    def _set_status(self, lbl: tk.Label, dot: str, color: str, text: str):
-        lbl.config(text=f"{dot} {text}", fg=color)
+        val = tk.Label(f, text="—", font=("", 11, "bold"),
+                       bg=C["CARD"], fg=C["MUTED"], anchor="w")
+        val.pack(side="left", fill="x", expand=True)
 
-    def _log_write(self, text: str, tag: str = "INFO"):
+        return dot, val
+
+    def _set_status(self, row: tuple, state: str, text: str) -> None:
+        dot, lbl = row
+        dot.set_state(state)
+        color = {
+            "online": C["GREEN"], "starting": C["ORANGE"],
+            "offline": C["MUTED"], "error": C["RED"],
+        }.get(state, C["MUTED"])
+        lbl.config(text=text, fg=color)
+
+    # ── Log helpers ───────────────────────────────────────────────────────────
+    def _log_write(self, text: str, tag: str = "INFO") -> None:
         self._log.config(state="normal")
+        ts = time.strftime("%H:%M:%S")
+        self._log.insert("end", f"[{ts}] ", "TS")
         self._log.insert("end", text, tag)
         self._log.see("end")
         self._log.config(state="disabled")
 
-    def _classify_log(self, line: str) -> str:
-        if "[ERROR]" in line:
-            return "ERROR"
-        if "[WARNING]" in line or "[WARN]" in line:
-            return "WARNING"
-        if "OK" in line or "ready" in line.lower() or "started" in line.lower():
+    def _clear_log(self) -> None:
+        self._log.config(state="normal")
+        self._log.delete("1.0", "end")
+        self._log.config(state="disabled")
+
+    def _classify(self, line: str) -> str:
+        ll = line.lower()
+        if "error" in ll:         return "ERROR"
+        if "warning" in ll:       return "WARNING"
+        if any(w in ll for w in ("started", "ready", "ok ", " ok\n", "index built", "✓")):
             return "OK"
         return "DIM"
 
-    def start(self):
+    # ── Start / Stop ──────────────────────────────────────────────────────────
+    def start(self) -> None:
         if self._running:
             return
+        if not is_configured():
+            messagebox.showwarning("ยังไม่ได้ตั้งค่า",
+                                   "กรุณาใส่ LINE Credentials ในแท็บ Settings ก่อน",
+                                   parent=self.winfo_toplevel())
+            self._app.show_tab(1)
+            return
+        self._start_time = time.time()
         self._log_write("▶ Starting server...\n", "INFO")
-        self._set_status(self._st_server, "⏳", C["ORANGE"], "กำลังเริ่ม...")
+        self._set_status(self._st_server, "starting", "กำลังเริ่ม...")
         self._btn_start.config(state="disabled", bg=C["MUTED"])
         self._btn_stop.config(state="normal", bg=C["RED"])
-
+        self._opened_admin = False
         env = os.environ.copy()
         env["PYTHONUTF8"] = "1"
-
         self._proc = subprocess.Popen(
             [SERVER_PYTHON, "-m", "uvicorn", "main:app",
              "--host", "0.0.0.0", "--port", "8000"],
             cwd=str(PROJECT_DIR),
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-            env=env,
-            bufsize=1,
-            start_new_session=True,
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, env=env, bufsize=1,
+            start_new_session=(sys.platform != "win32"),
         )
         self._running = True
-
         threading.Thread(target=self._stream_logs, daemon=True).start()
         self.after(3000, self._poll_status)
-
-        # Start ngrok alongside server
         if shutil.which("ngrok"):
             threading.Thread(target=self._start_ngrok, daemon=True).start()
 
-    def stop(self):
+    def stop(self) -> None:
         _kill_proc(self._proc)
         _kill_proc(self._ngrok_proc)
         self._running = False
@@ -622,208 +476,584 @@ class ControlPanel(tk.Frame):
         self._ngrok_proc = None
         self._ngrok_url = ""
         self._opened_admin = False
-        self._set_status(self._st_server, "●", C["RED"], "หยุดแล้ว")
-        self._set_status(self._st_ollama, "●", C["MUTED"], "รอ...")
-        self._set_status(self._st_rag,    "●", C["MUTED"], "รอ...")
-        self._set_status(self._st_ngrok,  "●", C["MUTED"], "หยุดแล้ว")
-        self._url_label.config(text="— รอ ngrok —", fg=C["MUTED"])
+        self._set_status(self._st_server, "offline", "หยุดแล้ว")
+        self._set_status(self._st_ollama, "offline", "—")
+        self._set_status(self._st_rag,    "offline", "—")
+        self._set_status(self._st_ngrok,  "offline", "หยุดแล้ว")
+        self._url_label.config(text="— รอ ngrok เริ่มทำงาน —", fg=C["MUTED"])
         self._btn_copy.config(state="disabled")
         self._btn_start.config(state="normal", bg=C["GREEN"])
         self._btn_stop.config(state="disabled", bg=C["MUTED"])
         self._log_write("■ Server stopped.\n", "WARNING")
 
-    def _stream_logs(self):
+    # ── Log streaming ─────────────────────────────────────────────────────────
+    def _stream_logs(self) -> None:
         try:
             for line in self._proc.stdout:
-                tag = self._classify_log(line)
+                tag = self._classify(line)
                 self.after(0, self._log_write, line, tag)
         except Exception:
             pass
 
-    def _poll_status(self):
+    # ── Health polling ────────────────────────────────────────────────────────
+    def _poll_status(self) -> None:
         if not self._running:
             return
         threading.Thread(target=self._fetch_health, daemon=True).start()
-        self.after(5000, self._poll_status)
+        self.after(6000, self._poll_status)
 
-    def _fetch_health(self):
+    def _fetch_health(self) -> None:
         try:
-            import httpx
-            r = httpx.get(HEALTH_URL, timeout=3)
-            data = r.json()
+            import urllib.request as _ureq, json as _json
+            with _ureq.urlopen(HEALTH_URL, timeout=3) as r:
+                data = _json.loads(r.read())
+
             def _upd():
-                self._set_status(self._st_server, "●", C["GREEN"], "Online ✓")
+                self._set_status(self._st_server, "online", "Online ✓")
                 if not self._opened_admin:
                     self._opened_admin = True
-                    threading.Thread(
-                        target=lambda: webbrowser.open(ADMIN_URL), daemon=True
-                    ).start()
-                if data.get("ollama", {}).get("healthy"):
-                    model = data["ollama"].get("model", "")
-                    self._set_status(self._st_ollama, "●", C["GREEN"], f"Online · {model}")
+                    threading.Thread(target=lambda: webbrowser.open(ADMIN_URL),
+                                     daemon=True).start()
+                ollama = data.get("ollama", {})
+                if ollama.get("healthy"):
+                    model = ollama.get("model", "")
+                    self._set_status(self._st_ollama, "online", f"Online · {model}")
                 else:
-                    self._set_status(self._st_ollama, "●", C["RED"], "Offline")
+                    self._set_status(self._st_ollama, "error", "Offline")
                 rag = data.get("rag", {})
                 if rag.get("ready"):
-                    self._set_status(self._st_rag, "●", C["GREEN"], f"{rag.get('chunks', 0)} chunks")
+                    self._set_status(self._st_rag, "online",
+                                     f"{rag.get('chunks', 0)} chunks")
                 else:
-                    self._set_status(self._st_rag, "●", C["ORANGE"], "ยังไม่พร้อม")
+                    self._set_status(self._st_rag, "starting", "Indexing...")
+
             self.after(0, _upd)
         except Exception:
-            self.after(0, lambda: self._set_status(self._st_server, "⏳", C["ORANGE"], "กำลังเริ่ม..."))
+            self.after(0, lambda: self._set_status(
+                self._st_server, "starting", "กำลังเริ่ม..."))
 
-    def _start_ngrok(self):
+    # ── ngrok ─────────────────────────────────────────────────────────────────
+    def _start_ngrok(self) -> None:
         env = read_env()
         token = env.get("NGROK_AUTH_TOKEN", "").strip()
         if token:
             subprocess.run(["ngrok", "config", "add-authtoken", token],
                            capture_output=True)
         self.after(0, lambda: self._set_status(
-            self._st_ngrok, "⏳", C["ORANGE"], "กำลังเชื่อมต่อ..."))
+            self._st_ngrok, "starting", "กำลังเชื่อมต่อ..."))
         try:
             self._ngrok_proc = subprocess.Popen(
                 ["ngrok", "http", "8000"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
             )
-            # Give ngrok time to start, then poll for URL
             time.sleep(2)
             self.after(0, self._poll_ngrok_url)
-        except Exception as e:
+        except Exception as exc:
             self.after(0, lambda: self._set_status(
-                self._st_ngrok, "●", C["RED"], f"Error: {e}"))
+                self._st_ngrok, "error", f"Error: {exc}"))
 
-    def _poll_ngrok_url(self):
+    def _poll_ngrok_url(self) -> None:
         if not self._running:
             return
         threading.Thread(target=self._fetch_ngrok_url, daemon=True).start()
         self.after(8000, self._poll_ngrok_url)
 
-    def _fetch_ngrok_url(self):
+    def _fetch_ngrok_url(self) -> None:
         try:
-            import httpx
-            r = httpx.get("http://localhost:4040/api/tunnels", timeout=3)
-            tunnels = r.json().get("tunnels", [])
+            import urllib.request as _ureq, json as _json
+            with _ureq.urlopen("http://localhost:4040/api/tunnels", timeout=3) as r:
+                tunnels = _json.loads(r.read()).get("tunnels", [])
             for t in tunnels:
                 if t.get("proto") == "https":
                     url = t["public_url"]
                     webhook = url + "/webhook"
-                    threading.Thread(
-                        target=self._sync_line_webhook, args=(webhook,), daemon=True
-                    ).start()
+                    if webhook != self._ngrok_url:
+                        threading.Thread(
+                            target=self._sync_line_webhook, args=(webhook,),
+                            daemon=True,
+                        ).start()
+
                     def _upd(u=url, w=webhook):
                         self._ngrok_url = w
-                        self._set_status(self._st_ngrok, "●", C["GREEN"],
-                                         u.replace("https://", ""))
+                        short = u.replace("https://", "")
+                        self._set_status(self._st_ngrok, "online", short)
                         self._url_label.config(text=w, fg=C["GREEN"])
                         self._btn_copy.config(state="normal")
+
                     self.after(0, _upd)
                     return
             self.after(0, lambda: self._set_status(
-                self._st_ngrok, "⏳", C["ORANGE"], "รอ tunnel..."))
+                self._st_ngrok, "starting", "รอ tunnel..."))
         except Exception:
             self.after(0, lambda: self._set_status(
-                self._st_ngrok, "⏳", C["ORANGE"], "กำลังเชื่อมต่อ..."))
+                self._st_ngrok, "starting", "กำลังเชื่อมต่อ..."))
 
-    def _sync_line_webhook(self, webhook_url: str):
+    def _sync_line_webhook(self, webhook_url: str) -> None:
+        import urllib.request as _ureq, urllib.error as _uerr, json as _json
         cfg = read_config()
         token = cfg.get("line_channel_access_token", "").strip()
         if not token:
+            self.after(0, lambda: self._log_write(
+                "⚠ ไม่มี LINE token — ข้าม webhook sync\n", "WARNING"))
             return
+        self.after(0, lambda: self._log_write(
+            f"→ Syncing webhook: {webhook_url}\n", "DIM"))
         try:
-            import httpx, json as _json
-            r = httpx.put(
+            body = _json.dumps({"webhookEndpointUrl": webhook_url}).encode("utf-8")
+            req = _ureq.Request(
                 "https://api.line.me/v2/bot/channel/webhook/endpoint",
-                headers={
-                    "Authorization": f"Bearer {token}",
-                    "Content-Type": "application/json",
-                },
-                content=_json.dumps({"webhookEndpointUrl": webhook_url}),
-                timeout=10,
+                data=body,
+                headers={"Authorization": f"Bearer {token}",
+                         "Content-Type": "application/json"},
+                method="PUT",
             )
-            if r.status_code == 200:
+            with _ureq.urlopen(req, timeout=10) as resp:
+                status = resp.status
+            if status == 200:
                 self.after(0, lambda: self._log_write(
-                    f"✓ LINE webhook อัปเดตอัตโนมัติ: {webhook_url}\n", "OK"))
+                    f"✓ LINE webhook อัปเดตแล้ว: {webhook_url}\n", "OK"))
             else:
                 self.after(0, lambda: self._log_write(
-                    f"⚠ LINE webhook sync failed: {r.status_code} {r.text}\n", "WARNING"))
-        except Exception as e:
+                    f"⚠ Webhook sync failed: HTTP {status}\n", "WARNING"))
+        except _uerr.HTTPError as exc:
+            err = exc.read().decode("utf-8", errors="replace")
             self.after(0, lambda: self._log_write(
-                f"⚠ LINE webhook sync error: {e}\n", "WARNING"))
+                f"⚠ Webhook sync HTTP {exc.code}: {err}\n", "WARNING"))
+        except Exception as exc:
+            self.after(0, lambda: self._log_write(
+                f"⚠ Webhook sync error: {exc}\n", "WARNING"))
 
-    def _copy_url(self):
+    # ── UI helpers ────────────────────────────────────────────────────────────
+    def _copy_url(self) -> None:
+        if not self._ngrok_url:
+            return
+        self.clipboard_clear()
+        self.clipboard_append(self._ngrok_url)
+        self._btn_copy.config(text="✓ Copied!")
+        self.after(2000, lambda: self._btn_copy.config(text="📋 Copy"))
+
+    def _open_webhook_url(self) -> None:
         if self._ngrok_url:
-            self.clipboard_clear()
-            self.clipboard_append(self._ngrok_url)
-            self._btn_copy.config(text="Copied!")
-            self.after(2000, lambda: self._btn_copy.config(text="Copy"))
+            webbrowser.open(self._ngrok_url.replace("/webhook", ""))
 
-    def open_admin(self):
+    def _open_admin(self) -> None:
         webbrowser.open(ADMIN_URL)
 
-    def _open_settings(self):
-        wizard = SetupWizard(self.winfo_toplevel(), on_done=lambda: None)
-        wizard.grab_set()
+    def _tick_stats(self) -> None:
+        if self._running and self._proc:
+            elapsed = int(time.time() - self._start_time) if hasattr(self, "_start_time") else 0
+            h, m, s = elapsed // 3600, (elapsed % 3600) // 60, elapsed % 60
+            self._lbl_uptime.config(text=f"Uptime: {h:02d}:{m:02d}:{s:02d}")
+        else:
+            self._lbl_uptime.config(text="Uptime: —")
+        self.after(1000, self._tick_stats)
+
+    def on_close(self) -> None:
+        _kill_proc(self._proc)
+        _kill_proc(self._ngrok_proc)
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# SETTINGS TAB (replaces the popup wizard — fixes Mac Toplevel issues)
+# ═════════════════════════════════════════════════════════════════════════════
+class SettingsTab(tk.Frame):
+    def __init__(self, master: tk.Widget, on_save: "Callable"):
+        super().__init__(master, bg=C["BG"])
+        self._on_save = on_save
+        self._vars: dict[str, tk.StringVar] = {}
+        self._build()
+        self._load()
+
+    def _section(self, title: str, icon: str = "") -> tk.Frame:
+        outer = tk.Frame(self, bg=C["BG"])
+        outer.pack(fill="x", padx=14, pady=(10, 0))
+        hdr = tk.Frame(outer, bg=C["PINK_LIGHT"], pady=4, padx=10)
+        hdr.pack(fill="x")
+        tk.Label(hdr, text=f"{icon}  {title}" if icon else title,
+                 font=("", 11, "bold"), bg=C["PINK_LIGHT"],
+                 fg=C["PINK2"]).pack(anchor="w")
+        body = tk.Frame(outer, bg=C["CARD"], padx=14, pady=10,
+                        highlightthickness=1, highlightbackground=C["BORDER"])
+        body.pack(fill="x")
+        return body
+
+    def _build(self) -> None:
+        # Scrollable canvas
+        canvas = tk.Canvas(self, bg=C["BG"], highlightthickness=0)
+        sb = ttk.Scrollbar(self, orient="vertical", command=canvas.yview)
+        canvas.configure(yscrollcommand=sb.set)
+        sb.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True)
+
+        self._inner = tk.Frame(canvas, bg=C["BG"])
+        win = canvas.create_window((0, 0), window=self._inner, anchor="nw")
+
+        def _resize(e):
+            canvas.itemconfig(win, width=e.width)
+        canvas.bind("<Configure>", _resize)
+
+        def _scroll(e):
+            canvas.yview_scroll(int(-1 * (e.delta / 120)), "units")
+        canvas.bind_all("<MouseWheel>", _scroll)
+
+        self._inner.bind("<Configure>",
+                         lambda e: canvas.configure(
+                             scrollregion=canvas.bbox("all")))
+
+        self._build_sections()
+
+    def _build_sections(self) -> None:
+        p = self._inner
+
+        # ── LINE Credentials ──────────────────────────────────────────────────
+        sec = self._section_in(p, "🔑  LINE Credentials",
+                               "หาได้ที่ developers.line.biz → เลือก Channel")
+        self._vars["line_channel_access_token"] = tk.StringVar()
+        self._vars["line_channel_secret"] = tk.StringVar()
+        SecretEntry(sec, "Channel Access Token *",
+                    self._vars["line_channel_access_token"], secret=False,
+                    hint="ยาวมาก เริ่มต้นด้วย eyJ...")
+        SecretEntry(sec, "Channel Secret *",
+                    self._vars["line_channel_secret"], secret=True,
+                    hint="32 ตัวอักษร — ดูใน Basic settings")
+
+        link_f = tk.Frame(sec, bg=C["CARD"])
+        link_f.pack(anchor="w", pady=(6, 0))
+        tk.Button(link_f, text="🌐 เปิด LINE Developers Console",
+                  font=("", 10), bg=C["CARD"], fg=C["PINK"],
+                  relief="flat", cursor="hand2",
+                  command=lambda: webbrowser.open(
+                      "https://developers.line.biz/console/")).pack(side="left")
+
+        # ── Bot Identity ──────────────────────────────────────────────────────
+        sec2 = self._section_in(p, "🏫  Bot Identity",
+                                "บอทจะแนะนำตัวเองด้วยข้อมูลนี้")
+        self._vars["faculty_name"] = tk.StringVar()
+        self._vars["university_name"] = tk.StringVar()
+        self._plain_entry(sec2, "ชื่อคณะ / หน่วยงาน", "faculty_name",
+                          hint="เช่น คณะวิทยาศาสตร์, งานทะเบียน")
+        self._plain_entry(sec2, "ชื่อมหาวิทยาลัย / องค์กร", "university_name")
+
+        # ── ngrok ─────────────────────────────────────────────────────────────
+        sec3 = self._section_in(p, "🔗  ngrok Auth Token (ถ้ามี)",
+                                "ใส่เพื่อไม่ให้ URL เปลี่ยนบ่อย")
+        self._vars["NGROK_AUTH_TOKEN"] = tk.StringVar()
+        SecretEntry(sec3, "Auth Token", self._vars["NGROK_AUTH_TOKEN"],
+                    secret=True, hint="จาก dashboard.ngrok.com → Getting Started → Authtoken")
+        tk.Button(sec3, text="🌐 เปิด ngrok Dashboard",
+                  font=("", 10), bg=C["CARD"], fg=C["PINK"],
+                  relief="flat", cursor="hand2",
+                  command=lambda: webbrowser.open(
+                      "https://dashboard.ngrok.com")).pack(anchor="w", pady=(4, 0))
+
+        # ── Ollama ────────────────────────────────────────────────────────────
+        sec4 = self._section_in(p, "🦙  Ollama Settings", "")
+        self._vars["ollama_base_url"] = tk.StringVar()
+        self._vars["ollama_chat_model"] = tk.StringVar()
+        self._vars["ollama_embed_model"] = tk.StringVar()
+        self._plain_entry(sec4, "Ollama URL", "ollama_base_url")
+        self._plain_entry(sec4, "Chat Model", "ollama_chat_model",
+                          hint="แนะนำ: llama3.2, typhoon2-8b-instruct")
+        self._plain_entry(sec4, "Embed Model", "ollama_embed_model",
+                          hint="แนะนำ: nomic-embed-text")
+
+        status_f = tk.Frame(sec4, bg=C["CARD"])
+        status_f.pack(fill="x", pady=(8, 0))
+        self._ollama_status = tk.Label(status_f, text="", font=("", 10),
+                                       bg=C["CARD"], fg=C["MUTED"])
+        self._ollama_status.pack(side="left")
+        tk.Button(status_f, text="ทดสอบ Ollama",
+                  font=("", 10), bg=C["PINK"], fg="white",
+                  relief="flat", padx=10, pady=3, cursor="hand2",
+                  command=self._test_ollama).pack(side="right")
+
+        # ── Save button ───────────────────────────────────────────────────────
+        save_f = tk.Frame(p, bg=C["BG"], pady=14)
+        save_f.pack(fill="x", padx=14)
+        self._btn_save = tk.Button(
+            save_f, text="💾  Save All Settings",
+            command=self.save,
+            font=("", 13, "bold"), bg=C["GREEN"], fg="white",
+            relief="flat", padx=28, pady=10, cursor="hand2",
+            activebackground="#009624", activeforeground="white",
+        )
+        self._btn_save.pack(side="left")
+
+        self._save_label = tk.Label(save_f, text="", font=("", 10),
+                                    bg=C["BG"], fg=C["GREEN"])
+        self._save_label.pack(side="left", padx=12)
+
+    def _section_in(self, parent: tk.Widget, title: str, hint: str = "") -> tk.Frame:
+        outer = tk.Frame(parent, bg=C["BG"])
+        outer.pack(fill="x", padx=14, pady=(10, 0))
+
+        hdr = tk.Frame(outer, bg=C["PINK_LIGHT"], pady=6, padx=12)
+        hdr.pack(fill="x")
+        tk.Label(hdr, text=title, font=("", 11, "bold"),
+                 bg=C["PINK_LIGHT"], fg=C["PINK2"]).pack(side="left")
+        if hint:
+            tk.Label(hdr, text=hint, font=("", 9),
+                     bg=C["PINK_LIGHT"], fg=C["MUTED"]).pack(side="left", padx=(8, 0))
+
+        body = tk.Frame(outer, bg=C["CARD"], padx=14, pady=10,
+                        highlightthickness=1, highlightbackground=C["BORDER"])
+        body.pack(fill="x")
+        return body
+
+    def _plain_entry(self, parent: tk.Widget, label: str, key: str,
+                     hint: str = "") -> None:
+        tk.Label(parent, text=label, font=("", 11, "bold"),
+                 bg=C["CARD"], fg=C["TEXT"]).pack(anchor="w", pady=(4, 0))
+        e = tk.Entry(parent, textvariable=self._vars[key],
+                     font=("", 11), relief="flat",
+                     bg=C["CARD2"], fg=C["TEXT"],
+                     insertbackground=C["PINK"],
+                     highlightthickness=1,
+                     highlightbackground=C["BORDER"],
+                     highlightcolor=C["PINK"])
+        e.pack(fill="x", ipady=5, pady=(2, 0))
+        if hint:
+            tk.Label(parent, text=hint, font=("", 9),
+                     bg=C["CARD"], fg=C["MUTED"]).pack(anchor="w", pady=(2, 0))
+
+    def _load(self) -> None:
+        cfg = read_config()
+        env = read_env()
+        defaults = {
+            "ollama_base_url": "http://localhost:11434",
+            "ollama_chat_model": "llama3.2",
+            "ollama_embed_model": "nomic-embed-text",
+            "faculty_name": "",
+            "university_name": "",
+            "line_channel_access_token": "",
+            "line_channel_secret": "",
+        }
+        for k, v in defaults.items():
+            if k in self._vars:
+                self._vars[k].set(cfg.get(k, v))
+        ngrok = env.get("NGROK_AUTH_TOKEN", "")
+        if "NGROK_AUTH_TOKEN" in self._vars:
+            self._vars["NGROK_AUTH_TOKEN"].set(ngrok)
+
+    def save(self) -> None:
+        cfg_keys = [
+            "line_channel_access_token", "line_channel_secret",
+            "faculty_name", "university_name",
+            "ollama_base_url", "ollama_chat_model", "ollama_embed_model",
+        ]
+        updates = {}
+        for k in cfg_keys:
+            if k in self._vars:
+                v = self._vars[k].get().strip()
+                if v:
+                    updates[k] = v
+
+        if not updates.get("line_channel_access_token") or \
+           not updates.get("line_channel_secret"):
+            messagebox.showerror("ขาดข้อมูล",
+                                 "Channel Access Token และ Channel Secret ห้ามว่าง",
+                                 parent=self.winfo_toplevel())
+            return
+
+        write_config(updates)
+
+        ngrok_token = self._vars.get("NGROK_AUTH_TOKEN", tk.StringVar()).get().strip()
+        if ngrok_token:
+            write_env_key("NGROK_AUTH_TOKEN", ngrok_token)
+
+        self._save_label.config(text="✓ บันทึกแล้ว!", fg=C["GREEN"])
+        self.after(3000, lambda: self._save_label.config(text=""))
+
+        self._on_save()
+
+    def _test_ollama(self) -> None:
+        self._ollama_status.config(text="⏳ กำลังตรวจสอบ...", fg=C["ORANGE"])
+        url = self._vars.get("ollama_base_url", tk.StringVar()).get().strip()
+
+        def _run():
+            try:
+                import urllib.request as _ureq, json as _json
+                with _ureq.urlopen(f"{url}/api/tags", timeout=4) as r:
+                    models = [m["name"] for m in _json.loads(r.read()).get("models", [])]
+                msg = f"✓ เชื่อมต่อได้! พบ {len(models)} models"
+                self.after(0, lambda: self._ollama_status.config(
+                    text=msg, fg=C["GREEN"]))
+            except Exception as exc:
+                self.after(0, lambda: self._ollama_status.config(
+                    text=f"✗ เชื่อมต่อไม่ได้: {exc}", fg=C["RED"]))
+
+        threading.Thread(target=_run, daemon=True).start()
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# SYSTEM TAB
+# ═════════════════════════════════════════════════════════════════════════════
+class SystemTab(tk.Frame):
+    def __init__(self, master: tk.Widget):
+        super().__init__(master, bg=C["BG"])
+        self._build()
+        self.after(500, self._refresh)
+
+    def _build(self) -> None:
+        import platform
+
+        # Quick links
+        link_card = tk.Frame(self, bg=C["CARD"], padx=16, pady=12,
+                             highlightthickness=1, highlightbackground=C["BORDER"])
+        link_card.pack(fill="x", padx=14, pady=(12, 4))
+        tk.Label(link_card, text="Quick Links", font=("", 11, "bold"),
+                 bg=C["CARD"], fg=C["TEXT"]).pack(anchor="w", pady=(0, 8))
+
+        links = [
+            ("🌐 Admin Panel",           ADMIN_URL),
+            ("📊 LINE Developers Console", "https://developers.line.biz/console/"),
+            ("🦙 Ollama Models",          "https://ollama.com/library"),
+            ("🔗 ngrok Dashboard",        "https://dashboard.ngrok.com"),
+            ("📖 LINE API Docs",          "https://developers.line.biz/en/docs/messaging-api/"),
+        ]
+        for label, url in links:
+            f = tk.Frame(link_card, bg=C["CARD"])
+            f.pack(fill="x", pady=2)
+            btn = tk.Button(f, text=label, font=("", 11),
+                            bg=C["PINK_LIGHT"], fg=C["PINK2"],
+                            relief="flat", padx=10, pady=5,
+                            cursor="hand2", anchor="w",
+                            command=lambda u=url: webbrowser.open(u))
+            btn.pack(side="left", fill="x", expand=True)
+
+        # System info
+        sys_card = tk.Frame(self, bg=C["CARD"], padx=16, pady=12,
+                            highlightthickness=1, highlightbackground=C["BORDER"])
+        sys_card.pack(fill="x", padx=14, pady=4)
+        tk.Label(sys_card, text="System Info", font=("", 11, "bold"),
+                 bg=C["CARD"], fg=C["TEXT"]).pack(anchor="w", pady=(0, 8))
+
+        self._info_text = tk.Text(sys_card, height=6,
+                                  font=("Menlo" if sys.platform == "darwin"
+                                        else "Consolas", 10),
+                                  bg=C["CARD2"], fg=C["TEXT2"],
+                                  relief="flat", state="disabled",
+                                  bd=0, padx=8, pady=6, wrap="none")
+        self._info_text.pack(fill="x")
+
+        # About
+        about = tk.Frame(self, bg=C["CARD"], padx=16, pady=10,
+                         highlightthickness=1, highlightbackground=C["BORDER"])
+        about.pack(fill="x", padx=14, pady=4)
+        tk.Label(about, text=f"LINE Bot Control Panel  v{APP_VERSION}",
+                 font=("", 11, "bold"), bg=C["CARD"], fg=C["TEXT"]).pack(anchor="w")
+        tk.Label(about, text="Powered by Ollama + FastAPI + LINE Messaging API",
+                 font=("", 10), bg=C["CARD"], fg=C["MUTED"]).pack(anchor="w", pady=(2, 0))
+
+    def _refresh(self) -> None:
+        import platform
+        py_ver = sys.version.split()[0]
+        plat = f"{platform.system()} {platform.release()}"
+        cfg = read_config()
+        token = cfg.get("line_channel_access_token", "")
+        secret = cfg.get("line_channel_secret", "")
+        model = cfg.get("ollama_chat_model", "llama3.2")
+
+        lines = [
+            f"Python:       {py_ver}",
+            f"Platform:     {plat}",
+            f"Project:      {PROJECT_DIR}",
+            f"LINE Token:   {'✓ ตั้งค่าแล้ว' if token else '✗ ยังไม่ได้ตั้ง'}",
+            f"LINE Secret:  {'✓ ตั้งค่าแล้ว' if secret else '✗ ยังไม่ได้ตั้ง'}",
+            f"Chat Model:   {model}",
+        ]
+        self._info_text.config(state="normal")
+        self._info_text.delete("1.0", "end")
+        self._info_text.insert("end", "\n".join(lines))
+        self._info_text.config(state="disabled")
 
 
 # ═════════════════════════════════════════════════════════════════════════════
 # MAIN APP
 # ═════════════════════════════════════════════════════════════════════════════
-
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("LINE Bot — Control Panel")
-        self.resizable(False, False)
-        self._width, self._height = 520, 540
-        self.geometry(f"{self._width}x{self._height}")
+        self.resizable(True, True)
+        self.minsize(520, 560)
+        self.geometry("560x680")
+        self.configure(bg=C["BG"])
         self.after(10, self._center)
 
-        # macOS dock icon / quit handler
+        # macOS dock/quit
         try:
             self.createcommand("tk::mac::Quit", self._on_quit)
+            self.createcommand("tk::mac::ShowPreferences",
+                               lambda: self.show_tab(1))
         except Exception:
             pass
         self.protocol("WM_DELETE_WINDOW", self._on_quit)
 
-        self._panel: ControlPanel | None = None
+        self._control_tab: ControlTab | None = None
+        self._build()
 
-        self._show_control()
+        # First-run: show Settings if not configured
+        if not is_configured():
+            self.after(200, lambda: self.show_tab(1))
 
     def _center(self):
         sw, sh = self.winfo_screenwidth(), self.winfo_screenheight()
-        self.geometry(f"{self._width}x{self._height}+{(sw-self._width)//2}+{(sh-self._height)//2}")
+        w, h = 560, 680
+        self.geometry(f"{w}x{h}+{(sw - w) // 2}+{(sh - h) // 2}")
 
-    def _show_wizard(self):
-        SetupWizard(self, on_done=self._after_wizard)
-        # Keep main window but smaller during wizard
-        self.geometry("420x300")
-        self._show_placeholder()
+    def _build(self):
+        # Header
+        make_header(self, "LINE Bot", "Control Panel", height=68)
 
-    def _show_placeholder(self):
-        for w in self.winfo_children():
-            w.destroy()
-        f = tk.Frame(self, bg=C["BG"])
-        f.pack(fill="both", expand=True)
-        make_header(f, "LINE Bot", "กำลังตั้งค่า...")
-        tk.Label(f, text="โปรดทำตาม Setup Wizard ที่เปิดขึ้นมา",
-                 font=("", 12), bg=C["BG"], fg=C["MUTED"]).pack(pady=30)
+        # Styled notebook
+        style = ttk.Style()
+        style.theme_use("default")
+        style.configure("App.TNotebook",
+                        background=C["BG"],
+                        borderwidth=0,
+                        tabmargins=[14, 6, 0, 0])
+        style.configure("App.TNotebook.Tab",
+                        background=C["BORDER"],
+                        foreground=C["TEXT2"],
+                        font=("", 11),
+                        padding=[14, 6],
+                        borderwidth=0)
+        style.map("App.TNotebook.Tab",
+                  background=[("selected", C["PINK"]),
+                              ("active",   C["PINK_LIGHT"])],
+                  foreground=[("selected", C["WHITE"]),
+                              ("active",   C["PINK2"])])
 
-    def _after_wizard(self):
-        self._show_control()
+        self._nb = ttk.Notebook(self, style="App.TNotebook")
+        self._nb.pack(fill="both", expand=True)
 
-    def _show_control(self):
-        for w in self.winfo_children():
-            w.destroy()
-        self._width, self._height = 540, 680
-        self.geometry(f"{self._width}x{self._height}")
-        self.after(10, self._center)
-        self._panel = ControlPanel(self)
+        self._control_tab = ControlTab(self._nb, app=self)
+        settings_tab = SettingsTab(self._nb, on_save=self._after_save)
+        system_tab = SystemTab(self._nb)
 
-    def _on_quit(self):
-        if self._panel:
-            _kill_proc(self._panel._proc)
-            _kill_proc(self._panel._ngrok_proc)
+        self._nb.add(self._control_tab, text="  ▶ Control  ")
+        self._nb.add(settings_tab,      text="  ⚙ Settings  ")
+        self._nb.add(system_tab,        text="  ℹ System  ")
+
+    def show_tab(self, index: int) -> None:
+        try:
+            self._nb.select(index)
+        except Exception:
+            pass
+
+    def _after_save(self) -> None:
+        self.show_tab(0)
+        # Hide banner if now configured
+        if is_configured() and self._control_tab:
+            try:
+                self._control_tab._banner.pack_forget()
+            except Exception:
+                pass
+
+    def _on_quit(self) -> None:
+        if self._control_tab:
+            self._control_tab.on_close()
         self.destroy()
 
 
@@ -835,8 +1065,8 @@ if __name__ == "__main__":
     except Exception:
         err = traceback.format_exc()
         try:
-            import tkinter.messagebox as _mb
-            _root = tk.Tk(); _root.withdraw()
-            _mb.showerror("LINE Bot — Error", err)
+            _r = tk.Tk()
+            _r.withdraw()
+            messagebox.showerror("LINE Bot — Error", err, parent=_r)
         except Exception:
-            print(err)
+            print(err, file=sys.stderr)

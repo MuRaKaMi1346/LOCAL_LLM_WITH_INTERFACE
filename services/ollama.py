@@ -44,7 +44,10 @@ class OllamaService:
             r.raise_for_status()
             data = r.json()
             embeddings = data.get("embeddings") or data.get("embedding")
-            return embeddings[0] if isinstance(embeddings[0], list) else embeddings
+            if not embeddings:
+                raise ValueError(f"Ollama embed returned no embeddings: {data}")
+            first = embeddings[0]
+            return first if isinstance(first, list) else embeddings
         except httpx.ConnectError:
             raise ConnectionError("Ollama ไม่ตอบสนอง")
         except Exception as e:

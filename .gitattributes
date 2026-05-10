@@ -1,0 +1,19 @@
+# Normalize line endings to LF in repo; checkout as-is on all platforms
+* text=auto eol=lf
+
+# Windows batch files must use CRLF
+*.bat text eol=crlf
+
+# Shell scripts always LF
+*.sh text eol=lf
+
+# Python / JSON / markdown — LF
+*.py  text eol=lf
+*.json text eol=lf
+*.md  text eol=lf
+*.txt text eol=lf
+
+# Binaries — no conversion
+*.exe binary
+*.dll binary
+*.pyd binary
