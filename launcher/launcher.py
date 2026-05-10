@@ -114,10 +114,9 @@ def make_header(parent: tk.Widget, title: str, subtitle: str = "",
             g = int(0x6A + (0x20 - 0x6A) * t)
             b = int(0xD5 + (0xE0 - 0xD5) * t)
             cv.create_rectangle(0, i, w, i + 1, fill=f"#{r:02x}{g:02x}{b:02x}", outline="")
-        # Decorative blobs
-        cv.create_oval(w - 90, -35, w + 30, 85, fill="#FFFFFF15", outline="")
-        cv.create_oval(w - 35, 25, w + 65, 125, fill="#FFFFFF0D", outline="")
-        cv.create_oval(10, -20, 80, 50, fill="#FFFFFF10", outline="")
+        cv.create_oval(w - 90, -35, w + 30, 85, fill="#EEB5F5", outline="")
+        cv.create_oval(w - 35,  25, w + 65, 125, fill="#C97EE8", outline="")
+        cv.create_oval(10, -20, 80, 50, fill="#D580EE", outline="")
         # Content
         cv.create_text(18, height // 2 - 7, text="🌸", font=("", 20), anchor="w")
         cv.create_text(52, height // 2 - (9 if subtitle else 0),
