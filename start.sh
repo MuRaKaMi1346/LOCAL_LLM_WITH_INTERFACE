@@ -5,6 +5,11 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
+# Prefer Homebrew expat over system expat (fixes pyexpat Symbol not found on macOS)
+_EXPAT_LIB="$(brew --prefix expat 2>/dev/null)/lib"
+[[ -d "$_EXPAT_LIB" ]] && export DYLD_LIBRARY_PATH="${_EXPAT_LIB}:${DYLD_LIBRARY_PATH:-}"
+unset _EXPAT_LIB
+
 VENV_PY=".venv/bin/python"
 
 # ── First run ─────────────────────────────────────────────────────────────────

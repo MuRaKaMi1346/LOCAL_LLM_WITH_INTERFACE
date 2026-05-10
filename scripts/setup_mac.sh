@@ -85,24 +85,41 @@ if [ -z "$PYTHON" ]; then
     success "Python 3.12 installed"
 fi
 
+# ── Homebrew expat shim (pyexpat / xml fix) ──────────────────────────────────
+# Python 3.12 Homebrew bottles reference _XML_SetAllocTrackerAct from expat 2.6+
+# but macOS system libexpat is older and missing the symbol.
+# Setting DYLD_LIBRARY_PATH makes the dynamic linker prefer Homebrew expat.
+_EXPAT_LIB="$(brew --prefix expat 2>/dev/null)/lib"
+if [[ -d "$_EXPAT_LIB" ]]; then
+    export DYLD_LIBRARY_PATH="${_EXPAT_LIB}:${DYLD_LIBRARY_PATH:-}"
+fi
+
 # ── Python native-module health check ────────────────────────────────────────
-# brew upgrade expat / openssl sometimes leaves pyexpat.so / _ssl.so broken
-# (Symbol not found errors). Detect and auto-fix before anything else.
 info "Verifying Python native modules (expat, ssl)..."
 if ! "$PYTHON" -c "import xml.parsers.expat, ssl" 2>/dev/null; then
     _PY_MINOR=$("$PYTHON" -c \
         'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' \
         2>/dev/null || echo "3.12")
-    warn "Python native modules broken — likely caused by 'brew upgrade expat' or 'brew upgrade openssl'"
-    info "Auto-fix: brew reinstall python@${_PY_MINOR} ..."
-    brew reinstall "python@${_PY_MINOR}"
-    export PATH="$(brew --prefix "python@${_PY_MINOR}")/bin:$PATH"
-    # Remove any stale venv that was created with the broken Python
+    warn "Python native modules broken (expat/ssl mismatch)"
+    info "Trying brew reinstall python@${_PY_MINOR}..."
+    brew reinstall "python@${_PY_MINOR}" 2>/dev/null || true
+    export PATH="$(brew --prefix "python@${_PY_MINOR}" 2>/dev/null)/bin:$PATH"
+    # Remove any stale venv built with broken Python
     if [ -d "$VENV_DIR" ]; then
-        warn "Removing stale .venv (built with broken Python)..."
+        warn "Removing stale .venv..."
         rm -rf "$VENV_DIR"
     fi
-    success "Python reinstalled — native modules should be OK"
+    # Final check
+    if ! "$PYTHON" -c "import xml.parsers.expat, ssl" 2>/dev/null; then
+        error "Python still broken after reinstall.
+  Fix manually:
+    brew reinstall expat
+    export DYLD_LIBRARY_PATH=\"\$(brew --prefix expat)/lib\"
+    rm -rf '${VENV_DIR}'
+  Then run this script again.
+  Or install Python from https://www.python.org/downloads/ (bundles its own expat)."
+    fi
+    success "Python modules OK after reinstall"
 else
     success "Python native modules OK"
 fi
