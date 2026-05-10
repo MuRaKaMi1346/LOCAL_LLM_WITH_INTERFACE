@@ -66,6 +66,23 @@ if errorlevel 1 (
 )
 
 :: ══════════════════════════════════════════════════════════════════════════════
+:: 2b. Ollama models  (pull if missing — only runs once per model)
+:: ══════════════════════════════════════════════════════════════════════════════
+ollama --version >nul 2>&1
+if not errorlevel 1 (
+    if not exist "%USERPROFILE%\.ollama\models\manifests\registry.ollama.ai\library\llama3.2\" (
+        echo.
+        echo  [Ollama] Pulling llama3.2 ^(first time — please wait^)...
+        ollama pull llama3.2
+    )
+    if not exist "%USERPROFILE%\.ollama\models\manifests\registry.ollama.ai\library\nomic-embed-text\" (
+        echo.
+        echo  [Ollama] Pulling nomic-embed-text ^(first time^)...
+        ollama pull nomic-embed-text
+    )
+)
+
+:: ══════════════════════════════════════════════════════════════════════════════
 :: 3. ngrok  (silent — winget only)
 :: ══════════════════════════════════════════════════════════════════════════════
 ngrok --version >nul 2>&1

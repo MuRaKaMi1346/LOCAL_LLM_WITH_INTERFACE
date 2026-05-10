@@ -12,6 +12,17 @@ unset _EXPAT_LIB
 
 VENV_PY=".venv/bin/python"
 
+# ── Ollama models (pull if missing — only runs once per model) ────────────────
+if command -v ollama &>/dev/null; then
+    for _M in llama3.2 nomic-embed-text; do
+        if [ ! -d "$HOME/.ollama/models/manifests/registry.ollama.ai/library/${_M}" ]; then
+            echo "  [Ollama] Pulling ${_M} (first time)..."
+            ollama pull "$_M" 2>/dev/null || true
+        fi
+    done
+    unset _M
+fi
+
 # ── First run ─────────────────────────────────────────────────────────────────
 if [ ! -f "$VENV_PY" ]; then
     echo ""
