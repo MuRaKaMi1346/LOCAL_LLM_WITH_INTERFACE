@@ -76,6 +76,28 @@ if [ -z "$PYTHON" ]; then
     success "Python 3.12 installed"
 fi
 
+# ── Python native-module health check ────────────────────────────────────────
+# brew upgrade expat / openssl sometimes leaves pyexpat.so / _ssl.so broken
+# (Symbol not found errors). Detect and auto-fix before anything else.
+info "Verifying Python native modules (expat, ssl)..."
+if ! "$PYTHON" -c "import xml.parsers.expat, ssl" 2>/dev/null; then
+    _PY_MINOR=$("$PYTHON" -c \
+        'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' \
+        2>/dev/null || echo "3.12")
+    warn "Python native modules broken — likely caused by 'brew upgrade expat' or 'brew upgrade openssl'"
+    info "Auto-fix: brew reinstall python@${_PY_MINOR} ..."
+    brew reinstall "python@${_PY_MINOR}"
+    export PATH="$(brew --prefix "python@${_PY_MINOR}")/bin:$PATH"
+    # Remove any stale venv that was created with the broken Python
+    if [ -d "$VENV_DIR" ]; then
+        warn "Removing stale .venv (built with broken Python)..."
+        rm -rf "$VENV_DIR"
+    fi
+    success "Python reinstalled — native modules should be OK"
+else
+    success "Python native modules OK"
+fi
+
 # ══════════════════════════════════════════════════════════════════════════════
 # 3. tkinter
 # ══════════════════════════════════════════════════════════════════════════════
@@ -192,10 +214,21 @@ VENV_PIP="$VENV_DIR/bin/pip"
 # Bootstrap pip when ensurepip was unavailable
 if [ ! -f "$VENV_PIP" ]; then
     info "Bootstrapping pip via get-pip.py..."
-    curl -sSL https://bootstrap.pypa.io/get-pip.py -o /tmp/_get_pip.py \
-        && "$VENV_PY" /tmp/_get_pip.py --quiet \
-        && rm -f /tmp/_get_pip.py
-    success "pip bootstrapped"
+    if curl -sSL https://bootstrap.pypa.io/get-pip.py -o /tmp/_get_pip.py \
+            && "$VENV_PY" /tmp/_get_pip.py --quiet; then
+        rm -f /tmp/_get_pip.py
+        success "pip bootstrapped"
+    else
+        rm -f /tmp/_get_pip.py
+        warn "pip bootstrap failed"
+        _PY_MINOR=$("$PYTHON" -c \
+            'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' \
+            2>/dev/null || echo "3.12")
+        error "Python appears broken (expat/ssl mismatch). Fix with:
+  brew reinstall python@${_PY_MINOR}
+  rm -rf '${VENV_DIR}'
+Then run this script again."
+    fi
 fi
 
 # ══════════════════════════════════════════════════════════════════════════════
