@@ -510,6 +510,69 @@ textarea.form-input{resize:vertical;min-height:260px;
   .stat-grid{grid-template-columns:repeat(2,1fr)}
   .power-section{flex-direction:column;text-align:center}
 }
+/* ==========================================================================
+   ✨ SAFE CYBERPUNK UPGRADES (รับประกันไม่กระทบโครงสร้างเดิม)
+   ========================================================================== */
+
+/* 1. อัปเกรดปุ่มให้เรืองแสงตอนโฮเวอร์ (Neon Buttons) */
+.btn:hover:not(:disabled) {
+    box-shadow: 0 0 20px var(--np), 0 0 40px var(--np2) !important;
+    transform: translateY(-2px) scale(1.02);
+    border-color: transparent;
+}
+.power-big-btn.on {
+    box-shadow: 0 0 30px rgba(0, 255, 148, 0.6), 0 0 60px rgba(0, 255, 148, 0.3), inset 0 0 20px rgba(0, 255, 148, 0.2);
+}
+
+/* 2. การ์ดต่างๆ (Glass Card) ให้มีแสงวิบวับและเด้งขึ้นตอนเอาเมาส์ชี้ */
+.card {
+    transition: transform 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.4s ease, border-color 0.4s ease !important;
+}
+.card:hover {
+    transform: translateY(-5px);
+    border-color: rgba(255, 106, 213, 0.6) !important;
+    box-shadow: 0 15px 40px rgba(0, 0, 0, 0.6), 0 0 25px rgba(255, 106, 213, 0.2) !important;
+}
+.stat-card:hover {
+    transform: translateY(-6px) scale(1.03);
+    border-color: var(--np) !important;
+    box-shadow: 0 12px 35px rgba(0, 0, 0, 0.5), inset 0 0 20px rgba(255, 106, 213, 0.15) !important;
+}
+
+/* 3. ตัวหนังสือหัวข้อ (Gradient Text) ขยับเลื่อนสีได้ */
+.hdr-title, .page-title .gradient-text {
+    background-size: 300% auto !important;
+    animation: rainbowText 4s linear infinite !important;
+    text-shadow: 0 0 15px rgba(255, 106, 213, 0.4);
+}
+@keyframes rainbowText {
+    to { background-position: 300% center; }
+}
+
+/* 4. เอฟเฟกต์ตอนกดพิมพ์ข้อความ (Input Focus) */
+.form-input:focus, .chat-input:focus, textarea.form-input:focus {
+    box-shadow: 0 0 0 3px rgba(0, 229, 255, 0.2), 0 0 20px rgba(0, 229, 255, 0.4) !important;
+    transform: scale(1.01);
+}
+body, html {
+    /* ใช้ transform="scale(-1, 1)" กลับซ้ายขวา ให้ปลายไม้อยู่ที่ซ้ายบนพอดี (0,0) */
+    cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" style="font-size: 24px;"><g transform="scale(-1, 1) translate(-30, 0)"><text x="0" y="24">🪄</text></g></svg>') 0 0, auto !important;
+}
+a, button, .btn, input, textarea, select, .card, .stat-card, .clickable {
+    cursor: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" style="font-size: 24px;"><g transform="scale(-1, 1) translate(-30, 0)"><text x="0" y="24">🪄</text></g></svg>') 14 14, pointer !important;
+}
+
+/* 2. สไตล์ของจุดแสงที่วิ่งตามเมาส์ */
+.magic-trail {
+    position: fixed;
+    pointer-events: none;
+    z-index: 99999;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    mix-blend-mode: screen;
+    transition: opacity 0.5s ease-out, transform 0.5s ease-out;
+}
 </style>
 </head>
 <body>
@@ -1737,6 +1800,32 @@ function fmtSize(b){ if(b<1024)return b+' B'; if(b<1048576)return(b/1024).toFixe
     if(sp){ sp.classList.add('spl-exit'); setTimeout(()=>sp.remove(), 900); }
   }, 2600);
 })();
+
+document.addEventListener('mousemove', function(e) {
+    const trail = document.createElement('div');
+    trail.className = 'magic-trail';
+    
+    // ตั้งตำแหน่งให้อยู่ตรงปลายไม้คฑาซ้ายบนพอดีเป๊ะ
+    trail.style.left = (e.clientX - 4) + 'px';
+    trail.style.top = (e.clientY - 4) + 'px';
+
+    // สุ่มสีแสงเรืองรอง (ชมพู, ฟ้า, ทอง, เขียวนีออน)
+    const colors = ['#FF6AD5', '#00E5FF', '#FFD700', '#00FF94'];
+    const color = colors[Math.floor(Math.random() * colors.length)];
+    trail.style.background = color;
+    trail.style.boxShadow = `0 0 10px ${color}, 0 0 20px ${color}, 0 0 30px white`;
+
+    document.body.appendChild(trail);
+
+    requestAnimationFrame(() => {
+        trail.style.transform = `translate(${Math.random() * 40 - 20}px, ${Math.random() * 40 - 20}px) scale(0.1)`;
+        trail.style.opacity = '0';
+    });
+
+    setTimeout(() => {
+        trail.remove();
+    }, 500);
+});
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 setLogFilter('ALL');
