@@ -1,10 +1,18 @@
+# LINE Bot + Ollama + RAG dependencies
+# Python 3.10–3.12 required (3.13 not yet supported by all packages below)
+#
+# Apple Silicon note: all packages below have pre-built arm64 wheels.
+# If chromadb compilation fails, ensure Xcode CLT is installed:
+#   xcode-select --install
 fastapi==0.115.0
 python-multipart==0.0.9
 uvicorn[standard]==0.30.0
 line-bot-sdk==3.11.0
 httpx==0.27.0
+# chromadb 0.5.x API: uses EphemeralClient / PersistentClient (0.6.x breaks this API)
 chromadb==0.5.23
 python-dotenv==1.0.1
 pydantic==2.7.4
 pydantic-settings==2.3.4
-numpy==1.26.4
+# numpy <2.0 required: numpy 2.x has breaking C API changes incompatible with chromadb 0.5.x
+numpy>=1.26.4,<2.0.0

@@ -3,27 +3,34 @@
 # On macOS: finds a framework Python for stable tkinter (no blinking).
 # If no framework Python is found: falls back to headless server mode (start_mac.sh).
 set -euo pipefail
-cd "$(dirname "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 
-# Prefer Homebrew expat over system expat (fixes pyexpat Symbol not found on macOS)
-_EXPAT_LIB="$(brew --prefix expat 2>/dev/null)/lib"
-[[ -d "$_EXPAT_LIB" ]] && export DYLD_LIBRARY_PATH="${_EXPAT_LIB}:${DYLD_LIBRARY_PATH:-}"
-unset _EXPAT_LIB
+# ── Homebrew PATH (MUST come first, before any `brew` call) ──────────────────
+# Apple Silicon: /opt/homebrew  |  Intel: /usr/local
+for _BREW_PREFIX in /opt/homebrew /usr/local; do
+    if [[ -f "${_BREW_PREFIX}/bin/brew" ]]; then
+        eval "$("${_BREW_PREFIX}/bin/brew" shellenv)" 2>/dev/null || true
+        break
+    fi
+done
+unset _BREW_PREFIX
 
-VENV_PY=".venv/bin/python"
+# ── Prefer Homebrew expat over system expat ───────────────────────────────────
+# Fixes: "Symbol not found: _XML_SetAllocTrackerAct" on macOS with Homebrew Python.
+# Note: DYLD_LIBRARY_PATH is stripped by SIP only for system binaries (/usr/bin etc.).
+# Homebrew Python and Python.org Python are NOT system binaries, so this works.
+if command -v brew &>/dev/null; then
+    _EXPAT_LIB="$(brew --prefix expat 2>/dev/null || echo '')/lib"
+    [[ -d "$_EXPAT_LIB" ]] && export DYLD_LIBRARY_PATH="${_EXPAT_LIB}:${DYLD_LIBRARY_PATH:-}"
+    unset _EXPAT_LIB
+fi
 
-# ── git pull (auto-update code) ──────────────────────────────────────────────
-command -v git &>/dev/null && git pull --ff-only origin main 2>/dev/null || true
+VENV_PY="$SCRIPT_DIR/.venv/bin/python"
 
-# ── Ollama models (pull if missing — only runs once per model) ────────────────
-if command -v ollama &>/dev/null; then
-    for _M in llama3.2 nomic-embed-text; do
-        if [ ! -d "$HOME/.ollama/models/manifests/registry.ollama.ai/library/${_M}" ]; then
-            echo "  [Ollama] Pulling ${_M} (first time)..."
-            ollama pull "$_M" 2>/dev/null || true
-        fi
-    done
-    unset _M
+# ── git pull (auto-update — uses the current tracked remote branch) ───────────
+if command -v git &>/dev/null; then
+    git pull --ff-only 2>/dev/null || true
 fi
 
 # ── First run ─────────────────────────────────────────────────────────────────
@@ -31,9 +38,12 @@ if [ ! -f "$VENV_PY" ]; then
     echo ""
     echo "  First run detected — running setup..."
     echo ""
-    bash scripts/setup_mac.sh
+    bash "$SCRIPT_DIR/scripts/setup_mac.sh"
     exit 0
 fi
+
+# ── Ollama: auto-start + auto-pull models ─────────────────────────────────────
+"$VENV_PY" "$SCRIPT_DIR/scripts/ollama_setup.py" --start --pull-models 2>/dev/null || true
 
 # ── macOS: tkinter requires a framework Python ────────────────────────────────
 if [[ "$(uname)" == "Darwin" ]]; then
@@ -42,14 +52,18 @@ if [[ "$(uname)" == "Darwin" ]]; then
         "import site; print(site.getsitepackages()[0])" 2>/dev/null || true)
 
     # ── helper: if $1 has _tkinter, exec it with venv packages ───────────────
-    # Returns normally (0) if check fails; never returns if exec succeeds.
+    # Never returns if exec succeeds; returns 0 if check fails (safe fall-through).
     _launch_if_tk() {
         local py="$1"
         [[ -x "$py" ]] || return 0
         env PYTHONPATH="${VENV_SITE}" "$py" -c "import _tkinter" 2>/dev/null \
             || return 0
         echo "  ✓ Using: $py"
-        exec env PYTHONPATH="${VENV_SITE}" "$py" launcher/launcher.py \
+        # Pass DYLD_LIBRARY_PATH explicitly so the expat fix survives exec.
+        exec env \
+            PYTHONPATH="${VENV_SITE}" \
+            DYLD_LIBRARY_PATH="${DYLD_LIBRARY_PATH:-}" \
+            "$py" "$SCRIPT_DIR/launcher/launcher.py" \
             || return 0   # exec failed (very rare) — fall through
     }
 
@@ -99,6 +113,7 @@ for pat in patterns:
 PYEOF
     )
     [[ -n "$_FRAMEWORK_PY" ]] && _launch_if_tk "$_FRAMEWORK_PY"
+    unset _FRAMEWORK_PY
 
     # ── 4. Fallback: headless server + Admin Panel in browser ─────────────────
     echo ""
@@ -110,8 +125,8 @@ PYEOF
     echo "  หากต้องการ GUI ให้ติดตั้ง Python จาก https://python.org"
     echo "  แล้วลบ .venv และรัน setup อีกครั้ง: bash scripts/setup_mac.sh"
     echo ""
-    exec bash start_mac.sh
+    exec bash "$SCRIPT_DIR/start_mac.sh"
 fi
 
 # ── Linux / other ─────────────────────────────────────────────────────────────
-exec "$VENV_PY" launcher/launcher.py
+exec "$VENV_PY" "$SCRIPT_DIR/launcher/launcher.py"

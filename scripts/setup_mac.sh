@@ -147,45 +147,10 @@ else
 fi
 
 # ══════════════════════════════════════════════════════════════════════════════
-# 4. Ollama
+# 4. Ollama (install + start + pull models)
 # ══════════════════════════════════════════════════════════════════════════════
 info "Checking Ollama..."
-if command -v ollama &>/dev/null; then
-    success "Ollama already installed ($(ollama --version 2>/dev/null | head -1 || echo 'version unknown'))"
-else
-    info "Ollama not found — installing via Homebrew..."
-    brew install ollama
-    success "Ollama installed"
-
-    info "Starting Ollama service..."
-    brew services start ollama 2>/dev/null || true
-    sleep 2
-    success "Ollama service started"
-fi
-
-# ── Ollama models ─────────────────────────────────────────────────────────────
-info "Checking Ollama models (llama3.2 + nomic-embed-text)..."
-# Ensure the service is up (may not have been started if already installed)
-if ! curl -s http://localhost:11434/api/tags &>/dev/null; then
-    info "Starting Ollama service..."
-    brew services start ollama 2>/dev/null || true
-    sleep 4
-fi
-if curl -s http://localhost:11434/api/tags &>/dev/null; then
-    for _MODEL in llama3.2 nomic-embed-text; do
-        if ollama list 2>/dev/null | grep -q "^${_MODEL}"; then
-            success "Model ${_MODEL} already present"
-        else
-            info "Pulling ${_MODEL} (may take several minutes)..."
-            ollama pull "$_MODEL" \
-                && success "Model ${_MODEL} ready" \
-                || warn "Pull failed — run manually: ollama pull ${_MODEL}"
-        fi
-    done
-else
-    warn "Ollama not responding — skipping model pull"
-    warn "After Ollama starts, run:  ollama pull llama3.2 && ollama pull nomic-embed-text"
-fi
+"$PYTHON" "$SCRIPT_DIR/ollama_setup.py" --install --start --pull-models
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 5. ngrok (optional — for public webhook URL)
@@ -282,8 +247,8 @@ fi
 # ══════════════════════════════════════════════════════════════════════════════
 # 10. Create directories
 # ══════════════════════════════════════════════════════════════════════════════
-mkdir -p "$PROJECT_DIR/data" "$PROJECT_DIR/logs"
-success "data/ and logs/ directories ready"
+mkdir -p "$PROJECT_DIR/data" "$PROJECT_DIR/logs" "$PROJECT_DIR/custom"
+success "data/, logs/, and custom/ directories ready"
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 11. Copy to /Applications (optional)

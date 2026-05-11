@@ -53,42 +53,13 @@ if errorlevel 1 (
 :: ══════════════════════════════════════════════════════════════════════════════
 git --version >nul 2>&1
 if not errorlevel 1 (
-    git pull --ff-only origin main >nul 2>&1
+    git pull --ff-only >nul 2>&1
 )
 
 :: ══════════════════════════════════════════════════════════════════════════════
-:: 2. Ollama  (silent — install in background if winget available)
+:: 2. Ollama  (auto-install, auto-start, auto-pull models)
 :: ══════════════════════════════════════════════════════════════════════════════
-ollama --version >nul 2>&1
-if errorlevel 1 (
-    set "HAS_WINGET=0"
-    winget --version >nul 2>&1
-    if not errorlevel 1 set "HAS_WINGET=1"
-    if "!HAS_WINGET!"=="1" (
-        start /b "" winget install -e --id Ollama.Ollama ^
-            --accept-source-agreements --accept-package-agreements >nul 2>&1
-    ) else (
-        powershell -NoProfile -WindowStyle Hidden -Command ^
-            "Invoke-WebRequest 'https://ollama.com/download/OllamaSetup.exe' -OutFile '%TEMP%\OllamaSetup.exe' -UseBasicParsing; Start-Process '%TEMP%\OllamaSetup.exe' '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART' -Wait; Remove-Item '%TEMP%\OllamaSetup.exe' -Force -ErrorAction SilentlyContinue" >nul 2>&1
-    )
-)
-
-:: ══════════════════════════════════════════════════════════════════════════════
-:: 2b. Ollama models  (pull if missing — only runs once per model)
-:: ══════════════════════════════════════════════════════════════════════════════
-ollama --version >nul 2>&1
-if not errorlevel 1 (
-    if not exist "%USERPROFILE%\.ollama\models\manifests\registry.ollama.ai\library\llama3.2\" (
-        echo.
-        echo  [Ollama] Pulling llama3.2 ^(first time — please wait^)...
-        ollama pull llama3.2
-    )
-    if not exist "%USERPROFILE%\.ollama\models\manifests\registry.ollama.ai\library\nomic-embed-text\" (
-        echo.
-        echo  [Ollama] Pulling nomic-embed-text ^(first time^)...
-        ollama pull nomic-embed-text
-    )
-)
+python scripts\ollama_setup.py --install --start --pull-models
 
 :: ══════════════════════════════════════════════════════════════════════════════
 :: 3. ngrok  (silent — winget only)

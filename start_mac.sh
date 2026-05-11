@@ -1,9 +1,26 @@
 #!/usr/bin/env bash
 # start_mac.sh — รัน LINE Bot server + ngrok พร้อมกัน (สำหรับ Mac/Linux)
 set -euo pipefail
-cd "$(dirname "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 
-VENV_PY=".venv/bin/python"
+# ── Homebrew PATH (Apple Silicon: /opt/homebrew, Intel: /usr/local) ──────────
+for _BREW_PREFIX in /opt/homebrew /usr/local; do
+    if [[ -f "${_BREW_PREFIX}/bin/brew" ]]; then
+        eval "$("${_BREW_PREFIX}/bin/brew" shellenv)" 2>/dev/null || true
+        break
+    fi
+done
+unset _BREW_PREFIX
+
+# ── Prefer Homebrew expat over system expat ───────────────────────────────────
+if command -v brew &>/dev/null; then
+    _EXPAT_LIB="$(brew --prefix expat 2>/dev/null || echo '')/lib"
+    [[ -d "$_EXPAT_LIB" ]] && export DYLD_LIBRARY_PATH="${_EXPAT_LIB}:${DYLD_LIBRARY_PATH:-}"
+    unset _EXPAT_LIB
+fi
+
+VENV_PY="$SCRIPT_DIR/.venv/bin/python"
 
 # ── ตรวจ venv ─────────────────────────────────────────────────────────────────
 if [ ! -f "$VENV_PY" ]; then
@@ -13,15 +30,19 @@ if [ ! -f "$VENV_PY" ]; then
     exit 1
 fi
 
-# ── อ่าน LINE token จาก config.json ──────────────────────────────────────────
+# ── Ollama: auto-start + auto-pull models ─────────────────────────────────────
+"$VENV_PY" "$SCRIPT_DIR/scripts/ollama_setup.py" --start --pull-models 2>/dev/null || true
+
+# ── อ่าน LINE token จาก config.json (ใช้ venv Python เท่านั้น) ──────────────
 LINE_TOKEN=""
-if [ -f "config.json" ]; then
-    LINE_TOKEN=$(python3 -c "
+if [ -f "$SCRIPT_DIR/config.json" ]; then
+    LINE_TOKEN=$("$VENV_PY" -c "
 import json, sys
 try:
-    d = json.load(open('config.json'))
-    print(d.get('line_channel_access_token',''))
-except:
+    with open('config.json', encoding='utf-8') as f:
+        d = json.load(f)
+    print(d.get('line_channel_access_token', ''))
+except Exception:
     print('')
 " 2>/dev/null || echo "")
 fi
@@ -47,26 +68,32 @@ cleanup() {
 }
 trap cleanup EXIT INT TERM
 
-# ── รัน uvicorn ────────────────────────────────────────────────────────────────
+# ── รัน uvicorn (ใช้ venv Python เสมอ) ────────────────────────────────────────
 echo ""
 echo "  ╔══════════════════════════════════════╗"
 echo "  ║     LINE Bot — กำลังเริ่มระบบ       ║"
 echo "  ╚══════════════════════════════════════╝"
 echo ""
 
-"$VENV_PY" -m uvicorn main:app --host 0.0.0.0 --port 8000 &
+"$VENV_PY" -m uvicorn main:app \
+    --host 0.0.0.0 \
+    --port 8000 \
+    --log-level info &
 SERVER_PID=$!
 
 # รอ server ขึ้น (ลอง 30 วินาที)
 echo "  ⏳ รอ server พร้อม..."
 READY=0
-for i in $(seq 1 30); do
+_cnt=0
+while [ $_cnt -lt 30 ]; do
     if curl -sf http://localhost:8000/health >/dev/null 2>&1; then
         READY=1
         break
     fi
     sleep 1
+    _cnt=$((_cnt + 1))
 done
+unset _cnt
 
 if [ $READY -eq 1 ]; then
     echo "  ✅ Server พร้อมที่ http://localhost:8000"
@@ -77,38 +104,47 @@ fi
 
 # ── รัน ngrok ──────────────────────────────────────────────────────────────────
 if command -v ngrok &>/dev/null; then
-    # ใส่ auth token ถ้ามีใน .env
-    if [ -f ".env" ]; then
-        NGROK_TOKEN=$(grep "^NGROK_AUTH_TOKEN=" .env 2>/dev/null | cut -d= -f2 | tr -d ' \r' || echo "")
+    # อ่าน auth token จาก .env (ใช้ bash string manipulation เพื่อรองรับ token ที่มี '=')
+    if [ -f "$SCRIPT_DIR/.env" ]; then
+        _ENV_LINE=$(grep "^NGROK_AUTH_TOKEN=" "$SCRIPT_DIR/.env" 2>/dev/null || true)
+        NGROK_TOKEN="${_ENV_LINE#NGROK_AUTH_TOKEN=}"
+        NGROK_TOKEN="$(printf '%s' "$NGROK_TOKEN" | tr -d ' \r')"
+        unset _ENV_LINE
         if [ -n "$NGROK_TOKEN" ]; then
             ngrok config add-authtoken "$NGROK_TOKEN" >/dev/null 2>&1 || true
         fi
     fi
 
     echo "  ▶ เริ่ม ngrok..."
-    ngrok http 8000 > /dev/null 2>&1 &
+    # --request-header-add: ข้าม ngrok browser warning สำหรับการทดสอบผ่าน browser
+    # (ไม่กระทบ LINE webhook ซึ่งเป็น POST อยู่แล้ว)
+    ngrok http 8000 \
+        --request-header-add "ngrok-skip-browser-warning: true" \
+        > /dev/null 2>&1 &
     NGROK_PID=$!
 
-    # รอ ngrok ขึ้นแล้ว poll URL
+    # รอ ngrok ขึ้นแล้ว poll URL (ใช้ venv Python สำหรับ JSON parsing)
     sleep 3
     NGROK_URL=""
-    for i in $(seq 1 15); do
+    _cnt=0
+    while [ $_cnt -lt 15 ]; do
         NGROK_URL=$(curl -sf http://localhost:4040/api/tunnels 2>/dev/null \
-            | python3 -c "
-import json,sys
+            | "$VENV_PY" -c "
+import json, sys
 try:
-    d=json.load(sys.stdin)
-    tunnels=d.get('tunnels',[])
-    for t in tunnels:
-        if t.get('proto')=='https':
+    d = json.load(sys.stdin)
+    for t in d.get('tunnels', []):
+        if t.get('proto') == 'https':
             print(t['public_url'])
             break
-except:
+except Exception:
     pass
 " 2>/dev/null || echo "")
         [ -n "$NGROK_URL" ] && break
         sleep 1
+        _cnt=$((_cnt + 1))
     done
+    unset _cnt
 
     if [ -n "$NGROK_URL" ]; then
         WEBHOOK="${NGROK_URL}/webhook"
@@ -140,7 +176,7 @@ except:
     fi
 else
     echo ""
-    echo "  ⚠️  ไม่พบ ngrok — ติดตั้งด้วย: brew install ngrok"
+    echo "  ⚠️  ไม่พบ ngrok — ติดตั้งด้วย: brew install --cask ngrok"
     echo ""
 fi
 

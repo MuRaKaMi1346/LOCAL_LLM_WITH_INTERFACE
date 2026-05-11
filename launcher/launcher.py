@@ -699,8 +699,16 @@ class SettingsTab(tk.Frame):
         canvas.bind("<Configure>", _resize)
 
         def _scroll(e):
-            canvas.yview_scroll(int(-1 * (e.delta / 120)), "units")
+            # macOS trackpad: delta is in pixels (~1-10 per event), not 120-unit steps
+            # Windows mouse wheel: delta is always a multiple of 120
+            if sys.platform == "darwin":
+                canvas.yview_scroll(int(-1 * e.delta), "units")
+            else:
+                canvas.yview_scroll(int(-1 * (e.delta / 120)), "units")
         canvas.bind_all("<MouseWheel>", _scroll)
+        # Linux: mouse wheel fires Button-4 (scroll up) and Button-5 (scroll down)
+        canvas.bind_all("<Button-4>", lambda e: canvas.yview_scroll(-3, "units"))
+        canvas.bind_all("<Button-5>", lambda e: canvas.yview_scroll(3, "units"))
 
         self._inner.bind("<Configure>",
                          lambda e: canvas.configure(

@@ -3,7 +3,6 @@ import re
 from pathlib import Path
 
 import chromadb
-from chromadb.config import Settings as ChromaSettings
 
 from config import settings
 from services.ollama import ollama
@@ -46,9 +45,9 @@ def _chunk_text(text: str, chunk_size: int, overlap: int) -> list[str]:
 
 class RAGService:
     def __init__(self):
-        self.client = chromadb.Client(
-            ChromaSettings(anonymized_telemetry=False, allow_reset=True)
-        )
+        # EphemeralClient: in-memory, no persistence, compatible with chromadb >=0.4
+        # Replaces deprecated chromadb.Client(Settings(...)) removed in chromadb 0.6+
+        self.client = chromadb.EphemeralClient()
         self.collection = None
         self._ready = False
 

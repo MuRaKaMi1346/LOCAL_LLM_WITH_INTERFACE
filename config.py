@@ -2,12 +2,15 @@ import json
 import logging
 from pathlib import Path
 
-from pydantic_settings import BaseSettings
 from pydantic import Field
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
 
-_CONFIG_JSON = Path("config.json")
+# Resolve paths relative to this file, not the CWD —
+# so imports from any working directory work correctly.
+_HERE = Path(__file__).parent
+_CONFIG_JSON = _HERE / "config.json"
 
 _RUNTIME_KEYS = frozenset({
     "line_channel_access_token", "line_channel_secret",
@@ -34,10 +37,12 @@ class Settings(BaseSettings):
 
     max_history_turns: int = Field(8, env="MAX_HISTORY_TURNS")
 
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        extra = "ignore"
+    # pydantic-settings v2: use SettingsConfigDict instead of inner class Config
+    model_config = SettingsConfigDict(
+        env_file=str(_HERE / ".env"),
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
 
 def _apply_config_json(s: Settings) -> Settings:

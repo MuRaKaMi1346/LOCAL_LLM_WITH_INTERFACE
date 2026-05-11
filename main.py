@@ -49,11 +49,17 @@ from state import app_state
 async def lifespan(app: FastAPI):
     logger.info("Starting %s LINE Bot...", settings.faculty_name)
 
-    healthy = await ollama.is_healthy()
+    healthy = await ollama.ensure_running()
     if not healthy:
-        logger.warning("Ollama not reachable at %s", settings.ollama_base_url)
+        logger.warning(
+            "Ollama not reachable at %s — chat will fail until Ollama starts",
+            settings.ollama_base_url,
+        )
     else:
         models = await ollama.list_models()
+        for m in (settings.ollama_chat_model, settings.ollama_embed_model):
+            if not await ollama.model_available(m):
+                logger.warning("Model '%s' not in Ollama — run: ollama pull %s", m, m)
         logger.info(
             "Ollama OK | chat=%s | embed=%s | available=%s",
             settings.ollama_chat_model,

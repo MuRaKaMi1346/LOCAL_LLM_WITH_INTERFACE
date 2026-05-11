@@ -38,6 +38,11 @@ CUSTOM_PROMPT  = _CUSTOM / "prompt.txt"
 CUSTOM_TOPICS  = _CUSTOM / "quick_topics.json"
 CUSTOM_WELCOME = _CUSTOM / "welcome.txt"
 
+# Ensure required directories exist so write operations never raise FileNotFoundError
+DATA_DIR.mkdir(parents=True, exist_ok=True)
+_CUSTOM.mkdir(parents=True, exist_ok=True)
+(_BASE / "logs").mkdir(parents=True, exist_ok=True)
+
 
 # ── HTML ──────────────────────────────────────────────────────────────────────
 

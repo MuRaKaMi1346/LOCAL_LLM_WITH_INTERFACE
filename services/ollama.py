@@ -1,3 +1,9 @@
+import asyncio
+import os
+import shutil
+import subprocess
+import sys
+
 import httpx
 import logging
 
@@ -68,6 +74,97 @@ class OllamaService:
             return r.status_code == 200
         except Exception:
             return False
+
+    def _find_binary(self) -> str | None:
+        found = shutil.which("ollama")
+        if found:
+            return found
+        if sys.platform == "win32":
+            candidates = [
+                os.path.expandvars(r"%LOCALAPPDATA%\Programs\Ollama\ollama.exe"),
+                r"C:\Program Files\Ollama\ollama.exe",
+            ]
+        else:
+            candidates = ["/opt/homebrew/bin/ollama", "/usr/local/bin/ollama", "/usr/bin/ollama"]
+        for p in candidates:
+            if os.path.isfile(p):
+                return p
+        return None
+
+    async def model_available(self, model: str) -> bool:
+        available = await self.list_models()
+        base_name = model.split(":")[0]
+        return (
+            model in available
+            or f"{model}:latest" in available
+            or base_name in available
+            or any(m.split(":")[0] == base_name for m in available)
+        )
+
+    async def ensure_running(self) -> bool:
+        """Start Ollama headlessly if not already running. Returns True once API is up."""
+        if await self.is_healthy():
+            return True
+
+        cmd = self._find_binary()
+        if not cmd:
+            logger.warning("Ollama binary not found — cannot auto-start")
+            return False
+
+        logger.info("Ollama not responding — attempting to start...")
+
+        # macOS: brew services first (persists across reboots)
+        if sys.platform == "darwin":
+            brew = shutil.which("brew")
+            if not brew:
+                for p in ("/opt/homebrew/bin/brew", "/usr/local/bin/brew"):
+                    if os.path.isfile(p):
+                        brew = p
+                        break
+            if brew:
+                try:
+                    subprocess.run([brew, "services", "start", "ollama"],
+                                   capture_output=True, timeout=20)
+                    for _ in range(10):
+                        await asyncio.sleep(1)
+                        if await self.is_healthy():
+                            logger.info("Ollama started via brew services")
+                            return True
+                except Exception:
+                    pass
+
+        # Generic fallback: ollama serve detached
+        try:
+            env = os.environ.copy()
+            host = self.base_url.removeprefix("http://").removeprefix("https://")
+            env["OLLAMA_HOST"] = host
+            if sys.platform == "win32":
+                subprocess.Popen(
+                    [cmd, "serve"],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    creationflags=(subprocess.CREATE_NEW_PROCESS_GROUP
+                                   | subprocess.DETACHED_PROCESS),
+                    env=env,
+                )
+            else:
+                subprocess.Popen(
+                    [cmd, "serve"],
+                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    start_new_session=True,
+                    env=env,
+                )
+        except Exception as e:
+            logger.error("Failed to launch Ollama: %s", e)
+            return False
+
+        for _ in range(30):
+            await asyncio.sleep(1)
+            if await self.is_healthy():
+                logger.info("Ollama server started successfully")
+                return True
+
+        logger.error("Ollama did not respond within 30 s — start manually: ollama serve")
+        return False
 
     async def close(self):
         await self.client.aclose()
