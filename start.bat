@@ -83,6 +83,27 @@ if not exist ".venv\Scripts\python.exe" (
 )
 
 :: ══════════════════════════════════════════════════════════════════════════════
+:: 4b. Desktop shortcut (created once — points to this batch file)
+:: ══════════════════════════════════════════════════════════════════════════════
+set "_LNK=%USERPROFILE%\Desktop\LINE Bot.lnk"
+if not exist "%_LNK%" (
+    set "_BAT=%~f0"
+    powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+        "$lnk=[System.Environment]::GetEnvironmentVariable('_LNK');" ^
+        "$tgt=[System.Environment]::GetEnvironmentVariable('_BAT');" ^
+        "$wd=[System.IO.Path]::GetDirectoryName($tgt);" ^
+        "$ws=New-Object -ComObject WScript.Shell;" ^
+        "$s=$ws.CreateShortcut($lnk);" ^
+        "$s.TargetPath=$tgt;" ^
+        "$s.WorkingDirectory=$wd;" ^
+        "$s.Description='LINE Bot Controller';" ^
+        "$s.Save()" >nul 2>&1
+    if not errorlevel 1 echo   [Shortcut] Desktop shortcut created.
+)
+set "_LNK="
+set "_BAT="
+
+:: ══════════════════════════════════════════════════════════════════════════════
 :: 5. Launch setup GUI — handles pip install + launches the main app
 ::    Using pythonw.exe so NO console window appears
 :: ══════════════════════════════════════════════════════════════════════════════

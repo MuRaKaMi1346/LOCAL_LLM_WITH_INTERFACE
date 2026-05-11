@@ -42,6 +42,17 @@ if [ ! -f "$VENV_PY" ]; then
     exit 0
 fi
 
+# ── Desktop shortcut (macOS only — created once) ─────────────────────────────
+if [[ "$(uname)" == "Darwin" ]]; then
+    _APP="$SCRIPT_DIR/launcher/LineBot.app"
+    _DSK="$HOME/Desktop/LINE Bot.app"
+    if [ -d "$_APP" ] && [ ! -e "$_DSK" ]; then
+        ln -sfn "$_APP" "$_DSK" 2>/dev/null \
+            && echo "  ✓ Desktop shortcut created: ~/Desktop/LINE Bot.app" || true
+    fi
+    unset _APP _DSK
+fi
+
 # ── Ollama: auto-start + auto-pull models ─────────────────────────────────────
 "$VENV_PY" "$SCRIPT_DIR/scripts/ollama_setup.py" --start --pull-models 2>/dev/null || true
 
