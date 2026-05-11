@@ -54,7 +54,7 @@ if errorlevel 1 (
 ::     WScript.Shell.SpecialFolders('Desktop') always returns the correct path.
 :: ══════════════════════════════════════════════════════════════════════════════
 set "_BAT=%~f0"
-powershell -NoProfile -ExecutionPolicy Bypass -Command "$ws=New-Object -ComObject WScript.Shell;$desk=$ws.SpecialFolders('Desktop');$lnk=[IO.Path]::Combine($desk,'LINE Bot.lnk');if(-not(Test-Path $lnk)){$s=$ws.CreateShortcut($lnk);$s.TargetPath=$env:_BAT;$s.WorkingDirectory=[IO.Path]::GetDirectoryName($env:_BAT);$s.Description='LINE Bot Controller';$s.WindowStyle=1;$s.Save();Write-Host '  [Shortcut] Desktop shortcut created at' $lnk}"
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ws=New-Object -ComObject WScript.Shell;$desk=$ws.SpecialFolders('Desktop');$lnk=[IO.Path]::Combine($desk,'LINE Bot.lnk');if(-not(Test-Path $lnk)){$s=$ws.CreateShortcut($lnk);$s.TargetPath=$env:_BAT;$s.WorkingDirectory=[IO.Path]::GetDirectoryName($env:_BAT);$s.Description='LINE Bot Controller';$s.WindowStyle=1;$s.IconLocation=[IO.Path]::Combine([IO.Path]::GetDirectoryName($env:_BAT),'launcher\icon.ico') + ',0';$s.Save();Write-Host '  [Shortcut] Desktop shortcut created at' $lnk}"
 set "_BAT="
 
 :: ══════════════════════════════════════════════════════════════════════════════
