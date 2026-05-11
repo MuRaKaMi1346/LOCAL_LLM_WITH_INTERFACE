@@ -49,16 +49,13 @@ if errorlevel 1 (
 :python_ok
 
 :: ══════════════════════════════════════════════════════════════════════════════
-:: 1b. Desktop shortcut (created once — runs immediately after Python confirmed)
+:: 1b. Desktop shortcut (created once — uses Shell API to find real Desktop)
+::     %USERPROFILE%\Desktop is wrong on OneDrive-synced machines.
+::     WScript.Shell.SpecialFolders('Desktop') always returns the correct path.
 :: ══════════════════════════════════════════════════════════════════════════════
-set "_LNK=%USERPROFILE%\Desktop\LINE Bot.lnk"
 set "_BAT=%~f0"
-if not exist "%_LNK%" (
-    powershell -NoProfile -ExecutionPolicy Bypass -Command "$ws=New-Object -ComObject WScript.Shell;$s=$ws.CreateShortcut($env:_LNK);$s.TargetPath=$env:_BAT;$s.WorkingDirectory=[IO.Path]::GetDirectoryName($env:_BAT);$s.Description='LINE Bot Controller';$s.WindowStyle=1;$s.Save()" >nul 2>&1
-    echo.
-    echo   [Shortcut] Desktop shortcut created.
-)
-set "_LNK=" & set "_BAT="
+powershell -NoProfile -ExecutionPolicy Bypass -Command "$ws=New-Object -ComObject WScript.Shell;$desk=$ws.SpecialFolders('Desktop');$lnk=[IO.Path]::Combine($desk,'LINE Bot.lnk');if(-not(Test-Path $lnk)){$s=$ws.CreateShortcut($lnk);$s.TargetPath=$env:_BAT;$s.WorkingDirectory=[IO.Path]::GetDirectoryName($env:_BAT);$s.Description='LINE Bot Controller';$s.WindowStyle=1;$s.Save();Write-Host '  [Shortcut] Desktop shortcut created at' $lnk}"
+set "_BAT="
 
 :: ══════════════════════════════════════════════════════════════════════════════
 :: 1c. git pull  (auto-update code)
