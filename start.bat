@@ -49,7 +49,19 @@ if errorlevel 1 (
 :python_ok
 
 :: ══════════════════════════════════════════════════════════════════════════════
-:: 1b. git pull  (auto-update code)
+:: 1b. Desktop shortcut (created once — runs immediately after Python confirmed)
+:: ══════════════════════════════════════════════════════════════════════════════
+set "_LNK=%USERPROFILE%\Desktop\LINE Bot.lnk"
+set "_BAT=%~f0"
+if not exist "%_LNK%" (
+    powershell -NoProfile -ExecutionPolicy Bypass -Command "$ws=New-Object -ComObject WScript.Shell;$s=$ws.CreateShortcut($env:_LNK);$s.TargetPath=$env:_BAT;$s.WorkingDirectory=[IO.Path]::GetDirectoryName($env:_BAT);$s.Description='LINE Bot Controller';$s.WindowStyle=1;$s.Save()" >nul 2>&1
+    echo.
+    echo   [Shortcut] Desktop shortcut created.
+)
+set "_LNK=" & set "_BAT="
+
+:: ══════════════════════════════════════════════════════════════════════════════
+:: 1c. git pull  (auto-update code)
 :: ══════════════════════════════════════════════════════════════════════════════
 git --version >nul 2>&1
 if not errorlevel 1 (
@@ -81,27 +93,6 @@ if errorlevel 1 (
 if not exist ".venv\Scripts\python.exe" (
     python -m venv .venv >nul 2>&1
 )
-
-:: ══════════════════════════════════════════════════════════════════════════════
-:: 4b. Desktop shortcut (created once — points to this batch file)
-:: ══════════════════════════════════════════════════════════════════════════════
-set "_LNK=%USERPROFILE%\Desktop\LINE Bot.lnk"
-if not exist "%_LNK%" (
-    set "_BAT=%~f0"
-    powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-        "$lnk=[System.Environment]::GetEnvironmentVariable('_LNK');" ^
-        "$tgt=[System.Environment]::GetEnvironmentVariable('_BAT');" ^
-        "$wd=[System.IO.Path]::GetDirectoryName($tgt);" ^
-        "$ws=New-Object -ComObject WScript.Shell;" ^
-        "$s=$ws.CreateShortcut($lnk);" ^
-        "$s.TargetPath=$tgt;" ^
-        "$s.WorkingDirectory=$wd;" ^
-        "$s.Description='LINE Bot Controller';" ^
-        "$s.Save()" >nul 2>&1
-    if not errorlevel 1 echo   [Shortcut] Desktop shortcut created.
-)
-set "_LNK="
-set "_BAT="
 
 :: ══════════════════════════════════════════════════════════════════════════════
 :: 5. Launch setup GUI — handles pip install + launches the main app

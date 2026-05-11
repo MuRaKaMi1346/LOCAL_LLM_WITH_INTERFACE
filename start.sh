@@ -33,6 +33,23 @@ if command -v git &>/dev/null; then
     git pull --ff-only 2>/dev/null || true
 fi
 
+# ── Desktop shortcut (macOS only — created once) ─────────────────────────────
+# Placed BEFORE the first-run check so the shortcut is created even when
+# start.sh exits early to run setup_mac.sh on a fresh install.
+if [[ "$(uname)" == "Darwin" ]]; then
+    _APP="$SCRIPT_DIR/launcher/LineBot.app"
+    _DSK="$HOME/Desktop/LINE Bot.app"
+    if [ -d "$_APP" ] && [ ! -e "$_DSK" ]; then
+        # Strip quarantine so Finder can open the app without Gatekeeper dialogs
+        xattr -rd com.apple.quarantine "$_APP" 2>/dev/null || true
+        # Ensure the executable bit is set on the launcher binary
+        chmod -R +x "$_APP/Contents/MacOS/" 2>/dev/null || true
+        ln -sfn "$_APP" "$_DSK" 2>/dev/null \
+            && echo "  ✓ Desktop shortcut created: ~/Desktop/LINE Bot.app" || true
+    fi
+    unset _APP _DSK
+fi
+
 # ── First run ─────────────────────────────────────────────────────────────────
 if [ ! -f "$VENV_PY" ]; then
     echo ""
@@ -40,17 +57,6 @@ if [ ! -f "$VENV_PY" ]; then
     echo ""
     bash "$SCRIPT_DIR/scripts/setup_mac.sh"
     exit 0
-fi
-
-# ── Desktop shortcut (macOS only — created once) ─────────────────────────────
-if [[ "$(uname)" == "Darwin" ]]; then
-    _APP="$SCRIPT_DIR/launcher/LineBot.app"
-    _DSK="$HOME/Desktop/LINE Bot.app"
-    if [ -d "$_APP" ] && [ ! -e "$_DSK" ]; then
-        ln -sfn "$_APP" "$_DSK" 2>/dev/null \
-            && echo "  ✓ Desktop shortcut created: ~/Desktop/LINE Bot.app" || true
-    fi
-    unset _APP _DSK
 fi
 
 # ── Ollama: auto-start + auto-pull models ─────────────────────────────────────
