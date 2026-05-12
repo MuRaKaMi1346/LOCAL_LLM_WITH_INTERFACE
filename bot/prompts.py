@@ -3,7 +3,9 @@ from pathlib import Path
 
 from config import settings
 
-_CUSTOM_DIR = Path("custom")
+# Resolve relative to this file — survives non-project-root CWD
+# (e.g. when the admin panel writes to <project>/custom/ via absolute paths).
+_CUSTOM_DIR = Path(__file__).resolve().parent.parent / "custom"
 _CUSTOM_PROMPT_FILE = _CUSTOM_DIR / "prompt.txt"
 _CUSTOM_TOPICS_FILE = _CUSTOM_DIR / "quick_topics.json"
 _CUSTOM_WELCOME_FILE = _CUSTOM_DIR / "welcome.txt"

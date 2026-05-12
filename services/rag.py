@@ -10,6 +10,10 @@ from services.ollama import ollama
 logger = logging.getLogger(__name__)
 COLLECTION_NAME = "faculty_knowledge"
 
+# Resolve default data dir relative to project root so RAG indexing works
+# even when uvicorn is started from a different working directory.
+_DEFAULT_DATA_DIR = Path(__file__).resolve().parent.parent / "data"
+
 
 def _chunk_text(text: str, chunk_size: int, overlap: int) -> list[str]:
     paragraphs = re.split(r"\n{2,}", text.strip())
@@ -51,7 +55,7 @@ class RAGService:
         self.collection = None
         self._ready = False
 
-    async def build_index(self, data_dir: str = "data") -> int:
+    async def build_index(self, data_dir: str | Path | None = None) -> int:
         self.collection = self.client.get_or_create_collection(
             name=COLLECTION_NAME,
             metadata={"hnsw:space": "cosine"},
@@ -61,10 +65,10 @@ class RAGService:
             self._ready = True
             return self.collection.count()
 
-        data_path = Path(data_dir)
+        data_path = Path(data_dir) if data_dir else _DEFAULT_DATA_DIR
         docs = list(data_path.glob("**/*.md")) + list(data_path.glob("**/*.txt"))
         if not docs:
-            logger.warning("No documents found in %s", data_dir)
+            logger.warning("No documents found in %s", data_path)
             return 0
 
         all_chunks, all_ids = [], []
@@ -117,7 +121,7 @@ class RAGService:
         chunks = await self.retrieve(query)
         return "\n\n---\n\n".join(chunks) if chunks else ""
 
-    async def reset_and_rebuild(self, data_dir: str = "data") -> int:
+    async def reset_and_rebuild(self, data_dir: str | Path | None = None) -> int:
         if self.collection:
             self.client.delete_collection(COLLECTION_NAME)
         self._ready = False

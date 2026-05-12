@@ -635,6 +635,9 @@ class ControlTab(tk.Frame):
             return
         self.clipboard_clear()
         self.clipboard_append(self._ngrok_url)
+        # macOS Tk needs an explicit update() to push the clipboard to the
+        # system pasteboard — without it, the copy is lost when focus changes.
+        self.update_idletasks()
         self._btn_copy.config(text="✓ Copied!")
         self.after(2000, lambda: self._btn_copy.config(text="📋 Copy"))
 

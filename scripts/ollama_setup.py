@@ -254,8 +254,16 @@ def ensure_service(base: str, cmd: Optional[str] = None) -> bool:
 
     # macOS: try brew services first (persists across reboots)
     if _macos():
-        brew = shutil.which("brew") or "/opt/homebrew/bin/brew" or "/usr/local/bin/brew"
-        if brew and os.path.isfile(brew):
+        # Bug fix: previous `shutil.which("brew") or "/opt/..." or "/usr/..."`
+        # short-circuits on the first truthy string and never checks the third
+        # path. On Intel Mac without brew in PATH, this skipped /usr/local/bin/brew.
+        brew = shutil.which("brew")
+        if not brew:
+            for p in ("/opt/homebrew/bin/brew", "/usr/local/bin/brew"):
+                if os.path.isfile(p):
+                    brew = p
+                    break
+        if brew:
             try:
                 subprocess.run(
                     [brew, "services", "start", "ollama"],

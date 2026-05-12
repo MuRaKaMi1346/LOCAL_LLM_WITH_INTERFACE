@@ -10,10 +10,12 @@ if sys.stdout.encoding != "utf-8":
 if sys.stderr.encoding != "utf-8":
     sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
-# File logging
-Path("logs").mkdir(exist_ok=True)
+# File logging — resolve relative to this file so the log path is stable
+# regardless of where uvicorn is launched from.
+_LOG_DIR = Path(__file__).resolve().parent / "logs"
+_LOG_DIR.mkdir(exist_ok=True)
 _file_handler = RotatingFileHandler(
-    "logs/bot.log", maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8"
+    str(_LOG_DIR / "bot.log"), maxBytes=5 * 1024 * 1024, backupCount=3, encoding="utf-8"
 )
 _file_handler.setFormatter(
     logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
